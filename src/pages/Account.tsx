@@ -1,16 +1,37 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout/Layout';
 import { useAuth } from '../hooks/useAuth';
 import { useUserPlan } from '../hooks/useUserPlan';
-import { User, CreditCard, Settings, Crown, Zap, Star, Check, X, TestTube, Shuffle } from 'lucide-react';
+import { User, CreditCard, Settings, Crown, Zap, Star, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { usePayment } from '../hooks/usePayment';
 import toast from 'react-hot-toast';
 
 export const Account: React.FC = () => {
   const { user } = useAuth();
-  const { userPlan, loading, switchPlanManually } = useUserPlan();
+  const { userPlan, loading } = useUserPlan();
+  const { initiatePayment, loading: paymentLoading } = usePayment();
+  const [searchParams] = useSearchParams();
   const [showBilling, setShowBilling] = useState(false);
-  const [showTestingPanel, setShowTestingPanel] = useState(false);
+
+  // Handle payment callback
+  React.useEffect(() => {
+    const paymentStatus = searchParams.get('payment');
+    if (paymentStatus === 'success') {
+      toast.success('🎉 Payment successful! Welcome to SubTracker Pro!');
+      // Remove the parameter from URL
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('payment');
+      window.history.replaceState({}, '', newUrl.toString());
+    } else if (paymentStatus === 'cancelled') {
+      toast.error('Payment was cancelled. You can try again anytime.');
+      // Remove the parameter from URL
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('payment');
+      window.history.replaceState({}, '', newUrl.toString());
+    }
+  }, [searchParams]);
 
   const plans = [
     {
@@ -59,17 +80,21 @@ export const Account: React.FC = () => {
     }
   ];
 
-  const handlePlanSwitch = async (planId: string) => {
-    if (planId === userPlan?.plan_type) {
-      toast.info('Already on this plan');
+  const handleUpgradeToPro = async () => {
+    if (userPlan?.plan_type === 'pro') {
+      toast.info('You are already on the Pro plan');
       return;
     }
-    
-    await switchPlanManually(planId as any);
+
+    try {
+      await initiatePayment('pro');
+    } catch (error) {
+      console.error('Payment initiation failed:', error);
+    }
   };
 
   const handleCancelSubscription = () => {
-    toast.error('Subscription cancellation is not implemented yet. Please contact support.');
+    toast.info('To cancel your subscription, please contact support at iamstark009@gmail.com');
   };
 
   if (loading) {
@@ -99,79 +124,21 @@ export const Account: React.FC = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col sm:flex-row sm:items-center sm:justify-between"
+            className="text-center sm:text-left"
           >
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
-                Account Settings
-              </h1>
-              <p className="text-gray-600 dark:text-gray-400 mt-2">
-                Manage your account, subscription plan, and billing information
-              </p>
-            </div>
-            
-            {/* Testing Panel Toggle */}
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setShowTestingPanel(!showTestingPanel)}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-orange-500 to-red-600 text-white rounded-xl font-medium hover:from-orange-600 hover:to-red-700 transition-all shadow-lg mt-4 sm:mt-0"
-            >
-              <TestTube className="w-4 h-4 mr-2" />
-              Testing Panel
-            </motion.button>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-emerald-600 via-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Account Settings
+            </h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-2">
+              Manage your account, subscription plan, and billing information
+            </p>
           </motion.div>
-
-          {/* Testing Panel */}
-          <AnimatePresence>
-            {showTestingPanel && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="bg-gradient-to-r from-orange-50/50 to-red-50/50 dark:from-orange-900/20 dark:to-red-900/20 p-6 rounded-2xl border-2 border-orange-200/50 dark:border-orange-700/50"
-              >
-                <div className="flex items-center space-x-3 mb-4">
-                  <TestTube className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-                  <h3 className="text-lg font-semibold text-orange-800 dark:text-orange-200">
-                    Testing Mode - Manual Plan Switching
-                  </h3>
-                </div>
-                <p className="text-orange-700 dark:text-orange-300 text-sm mb-4">
-                  Switch between plans instantly to test features. This is for development/testing only.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {plans.map((plan) => (
-                    <button
-                      key={plan.id}
-                      onClick={() => handlePlanSwitch(plan.id)}
-                      disabled={plan.id === userPlan?.plan_type}
-                      className={`p-4 rounded-xl border-2 transition-all ${
-                        plan.id === userPlan?.plan_type
-                          ? 'border-green-500 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
-                          : 'border-orange-200 dark:border-orange-700 hover:border-orange-400 dark:hover:border-orange-500 bg-white/50 dark:bg-gray-800/50'
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2 mb-2">
-                        <plan.icon className="w-5 h-5" />
-                        <span className="font-medium">{plan.name}</span>
-                        {plan.id === userPlan?.plan_type && (
-                          <Check className="w-4 h-4 text-green-500" />
-                        )}
-                      </div>
-                      <p className="text-sm opacity-75">{plan.price} {plan.period}</p>
-                    </button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
 
           {/* Account Information */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
+            transition={{ delay: 0.2 }}
             className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50"
           >
             <div className="flex items-center space-x-4 mb-6">
@@ -218,7 +185,7 @@ export const Account: React.FC = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
+            transition={{ delay: 0.3 }}
             className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50"
           >
             <div className="flex items-center justify-between mb-6">
@@ -293,11 +260,11 @@ export const Account: React.FC = () => {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
+            transition={{ delay: 0.4 }}
             className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl p-6 lg:p-8 rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50"
           >
             <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-6">
-              Available Plans
+              Upgrade Your Plan
             </h2>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
@@ -306,7 +273,7 @@ export const Account: React.FC = () => {
                   key={plan.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + index * 0.1 }}
+                  transition={{ delay: 0.5 + index * 0.1 }}
                   className={`relative p-6 lg:p-8 rounded-2xl border-2 transition-all ${
                     plan.id === userPlan?.plan_type
                       ? 'border-blue-500 ring-4 ring-blue-500 ring-opacity-20 bg-blue-50/50 dark:bg-blue-900/20'
@@ -358,19 +325,32 @@ export const Account: React.FC = () => {
                   </ul>
 
                   <button
-                    onClick={() => handlePlanSwitch(plan.id)}
+                    onClick={plan.id === 'pro' ? handleUpgradeToPro : undefined}
                     disabled={plan.id === userPlan?.plan_type}
                     className={`w-full py-3 px-6 rounded-xl font-semibold transition-all ${
                       plan.id === userPlan?.plan_type
                         ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+                        : plan.id === 'pro'
+                        ? `bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl ${paymentLoading ? 'opacity-50 cursor-not-allowed' : ''}`
                         : plan.popular
                         ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white hover:from-purple-600 hover:to-pink-700 shadow-lg hover:shadow-xl'
                         : 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl'
                     } disabled:opacity-50`}
                   >
-                    {plan.id === userPlan?.plan_type 
-                      ? 'Current Plan' 
-                      : `Switch to ${plan.name}`
+                    {plan.id === userPlan?.plan_type ? (
+                      'Current Plan'
+                    ) : plan.id === 'pro' ? (
+                      paymentLoading ? (
+                        <div className="flex items-center justify-center">
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                          Processing...
+                        </div>
+                      ) : (
+                        'Upgrade to Pro'
+                      )
+                    ) : (
+                      'Get Started'
+                    )
                     }
                   </button>
                 </motion.div>
@@ -378,19 +358,19 @@ export const Account: React.FC = () => {
             </div>
           </motion.div>
 
-          {/* Verifona Integration Notice */}
+          {/* Payment Integration Notice */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.7 }}
-            className="bg-gradient-to-r from-blue-50/50 to-indigo-50/50 dark:from-blue-900/20 dark:to-indigo-900/20 p-6 lg:p-8 rounded-2xl border border-blue-200/50 dark:border-blue-700/50"
+            transition={{ delay: 0.6 }}
+            className="bg-gradient-to-r from-emerald-50/50 to-blue-50/50 dark:from-emerald-900/20 dark:to-blue-900/20 p-6 lg:p-8 rounded-2xl border border-emerald-200/50 dark:border-emerald-700/50"
           >
             <div className="flex items-center space-x-3">
-              <CreditCard className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <CreditCard className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
               <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">Secure Payments with Verifona</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Payment processing will be handled through Verifona Gateway. Supports credit cards, debit cards, and digital wallets across Europe and USA. Integration coming soon!
+                <h3 className="font-semibold text-gray-900 dark:text-white">Secure Payments with Verifona/2Checkout</h3>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  Secure payment processing powered by Verifona and 2Checkout. Supports all major credit cards, PayPal, and digital wallets worldwide.
                 </p>
               </div>
             </div>
