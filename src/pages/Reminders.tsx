@@ -7,21 +7,280 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { format, differenceInDays } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
-import { sendTestReminderEmail } from '../lib/email';
-
 
 type ReminderSettings = {
-  // email_enabled removed
   reminder_30_days: boolean;
   reminder_7_days: boolean;
   reminder_1_day: boolean;
-  // email_time removed
 };
 
 const DEFAULT_SETTINGS: ReminderSettings = {
   reminder_30_days: true,
   reminder_7_days: true,
   reminder_1_day: true,
+};
+
+// Email scheduling logic
+const scheduleSubscriptionReminders = async (userId: string, settings: ReminderSettings, subscriptions: any[]) => {
+  try {
+    const activeSubscriptions = subscriptions.filter(sub => sub.status === 'active');
+    const today = new Date();
+    
+    const reminderTasks = [];
+
+    for (const subscription of activeSubscriptions) {
+      const renewalDate = new Date(subscription.next_renewal);
+      const daysUntilRenewal = differenceInDays(renewalDate, today);
+
+      // 30-day reminders: Send every 5 days starting from 30 days before
+      if (settings.reminder_30_days && daysUntilRenewal <= 30 && daysUntilRenewal > 7) {
+        const shouldSend = daysUntilRenewal === 30 || daysUntilRenewal === 25 || 
+                          daysUntilRenewal === 20 || daysUntilRenewal === 15 || 
+                          daysUntilRenewal === 10;
+        
+        if (shouldSend) {
+          reminderTasks.push({
+            userId,
+            subscriptionId: subscription.id,
+            reminderType: '30_days',
+            scheduledFor: new Date(),
+            daysUntilRenewal,
+            subscriptionData: subscription
+          });
+        }
+      }
+
+      // 7-day reminders: Send every 2-3 days
+      if (settings.reminder_7_days && daysUntilRenewal <= 7 && daysUntilRenewal > 1) {
+        const shouldSend = daysUntilRenewal === 7 || daysUntilRenewal === 5 || 
+                          daysUntilRenewal === 3 || daysUntilRenewal === 2;
+        
+        if (shouldSend) {
+          reminderTasks.push({
+            userId,
+            subscriptionId: subscription.id,
+            reminderType: '7_days',
+            scheduledFor: new Date(),
+            daysUntilRenewal,
+            subscriptionData: subscription
+          });
+        }
+      }
+
+      // 1-day reminders: Send at beginning of day and 6 hours before end of day
+      if (settings.reminder_1_day && daysUntilRenewal === 1) {
+        const morningReminder = new Date();
+        morningReminder.setHours(9, 0, 0, 0); // 9 AM
+
+        const eveningReminder = new Date();
+        eveningReminder.setHours(18, 0, 0, 0); // 6 PM
+
+        reminderTasks.push({
+          userId,
+          subscriptionId: subscription.id,
+          reminderType: '1_day_morning',
+          scheduledFor: morningReminder,
+          daysUntilRenewal,
+          subscriptionData: subscription
+        });
+
+        reminderTasks.push({
+          userId,
+          subscriptionId: subscription.id,
+          reminderType: '1_day_evening',
+          scheduledFor: eveningReminder,
+          daysUntilRenewal,
+          subscriptionData: subscription
+        });
+      }
+
+      // Same day reminders: Morning reminder for renewals due today
+      if (daysUntilRenewal === 0) {
+        const todayReminder = new Date();
+        todayReminder.setHours(10, 0, 0, 0); // 10 AM
+
+        reminderTasks.push({
+          userId,
+          subscriptionId: subscription.id,
+          reminderType: 'due_today',
+          scheduledFor: todayReminder,
+          daysUntilRenewal,
+          subscriptionData: subscription
+        });
+      }
+    }
+
+    // Process and send email reminders
+    if (reminderTasks.length > 0) {
+      await sendEmailReminders(reminderTasks);
+      await logReminderActivity(userId, reminderTasks);
+    }
+
+  } catch (error) {
+    console.error('Error scheduling reminders:', error);
+  }
+};
+
+// Email sending function
+const sendEmailReminders = async (reminderTasks: any[]) => {
+  try {
+    // Group reminders by user for batch sending
+    const userReminders = reminderTasks.reduce((acc, task) => {
+      if (!acc[task.userId]) acc[task.userId] = [];
+      acc[task.userId].push(task);
+      return acc;
+    }, {});
+
+    for (const [userId, reminders] of Object.entries(userReminders)) {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user?.user?.email) continue;
+
+      // Create email content based on reminder types
+      const emailContent = generateEmailContent(reminders as any[]);
+      
+      // Call your email service (e.g., Supabase Edge Function, SendGrid, etc.)
+      await supabase.functions.invoke('send-reminder-email', {
+        body: {
+          to: user.user.email,
+          subject: emailContent.subject,
+          html: emailContent.html,
+          reminders: reminders
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error sending email reminders:', error);
+  }
+};
+
+// Generate email content based on reminder types
+const generateEmailContent = (reminders: any[]) => {
+  const urgentReminders = reminders.filter(r => r.reminderType.includes('1_day') || r.reminderType === 'due_today');
+  const warningReminders = reminders.filter(r => r.reminderType === '7_days');
+  const planningReminders = reminders.filter(r => r.reminderType === '30_days');
+
+  let subject = 'Subscription Renewal Reminder';
+  let html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <h1 style="color: #1f2937; margin-bottom: 30px;">Subscription Renewal Reminders</h1>
+  `;
+
+  if (urgentReminders.length > 0) {
+    subject = urgentReminders.some(r => r.reminderType === 'due_today') 
+      ? '🚨 Subscription Renewals Due Today!' 
+      : '⚠️ Subscription Renewals Due Tomorrow!';
+    
+    html += `
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <h2 style="color: #dc2626; margin-top: 0;">Urgent Renewals</h2>
+    `;
+    
+    urgentReminders.forEach(reminder => {
+      html += `
+        <div style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 6px;">
+          <h3 style="margin: 0 0 8px 0; color: #1f2937;">${reminder.subscriptionData.service_name}</h3>
+          <p style="margin: 0; color: #6b7280;">
+            <strong>Amount:</strong> $${reminder.subscriptionData.cost.toFixed(2)} • 
+            <strong>Cycle:</strong> ${reminder.subscriptionData.billing_cycle} • 
+            <strong>Status:</strong> ${reminder.reminderType === 'due_today' ? 'Due Today!' : 'Due Tomorrow!'}
+          </p>
+        </div>
+      `;
+    });
+    html += '</div>';
+  }
+
+  if (warningReminders.length > 0) {
+    html += `
+      <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <h2 style="color: #d97706; margin-top: 0;">Renewals This Week</h2>
+    `;
+    
+    warningReminders.forEach(reminder => {
+      html += `
+        <div style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 6px;">
+          <h3 style="margin: 0 0 8px 0; color: #1f2937;">${reminder.subscriptionData.service_name}</h3>
+          <p style="margin: 0; color: #6b7280;">
+            <strong>Amount:</strong> $${reminder.subscriptionData.cost.toFixed(2)} • 
+            <strong>Cycle:</strong> ${reminder.subscriptionData.billing_cycle} • 
+            <strong>Days remaining:</strong> ${reminder.daysUntilRenewal}
+          </p>
+        </div>
+      `;
+    });
+    html += '</div>';
+  }
+
+  if (planningReminders.length > 0) {
+    html += `
+      <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <h2 style="color: #2563eb; margin-top: 0;">Plan Ahead</h2>
+    `;
+    
+    planningReminders.forEach(reminder => {
+      html += `
+        <div style="margin-bottom: 12px; padding: 12px; background: white; border-radius: 6px;">
+          <h3 style="margin: 0 0 8px 0; color: #1f2937;">${reminder.subscriptionData.service_name}</h3>
+          <p style="margin: 0; color: #6b7280;">
+            <strong>Amount:</strong> $${reminder.subscriptionData.cost.toFixed(2)} • 
+            <strong>Cycle:</strong> ${reminder.subscriptionData.billing_cycle} • 
+            <strong>Days remaining:</strong> ${reminder.daysUntilRenewal}
+          </p>
+        </div>
+      `;
+    });
+    html += '</div>';
+  }
+
+  html += `
+      <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+        <p style="color: #6b7280; font-size: 14px; margin: 0;">
+          You can manage your subscriptions and reminder preferences in your account dashboard.
+        </p>
+      </div>
+    </div>
+  `;
+
+  return { subject, html };
+};
+
+// Log reminder activity to prevent duplicate sends
+const logReminderActivity = async (userId: string, reminderTasks: any[]) => {
+  try {
+    const logs = reminderTasks.map(task => ({
+      user_id: userId,
+      subscription_id: task.subscriptionId,
+      reminder_type: task.reminderType,
+      sent_at: new Date().toISOString(),
+      days_until_renewal: task.daysUntilRenewal
+    }));
+
+    await supabase.from('reminder_logs').insert(logs);
+  } catch (error) {
+    console.error('Error logging reminder activity:', error);
+  }
+};
+
+// Check if reminder should be sent (prevent duplicates)
+const shouldSendReminder = async (userId: string, subscriptionId: string, reminderType: string, daysUntilRenewal: number) => {
+  try {
+    const { data, error } = await supabase
+      .from('reminder_logs')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('subscription_id', subscriptionId)
+      .eq('reminder_type', reminderType)
+      .eq('days_until_renewal', daysUntilRenewal)
+      .gte('sent_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Within last 24 hours
+      .maybeSingle();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    
+    return !data; // Send if no recent log found
+  } catch (error) {
+    console.error('Error checking reminder history:', error);
+    return false;
+  }
 };
 
 export const Reminders: React.FC = () => {
@@ -34,12 +293,12 @@ export const Reminders: React.FC = () => {
   const [isInfoFading, setIsInfoFading] = useState(false);
   const [showHeaderInfo, setShowHeaderInfo] = useState(!!highlightId);
 
-  // NEW: only the three day-window toggles
   const [reminderSettings, setReminderSettings] = useState<ReminderSettings>(DEFAULT_SETTINGS);
   const [settingsLoading, setSettingsLoading] = useState<boolean>(true);
   const [settingsSaving, setSettingsSaving] = useState<boolean>(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
-  // Load settings (reads whatever exists, ignores removed columns)
+  // Load settings
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -51,14 +310,13 @@ export const Reminders: React.FC = () => {
 
         const { data, error } = await supabase
           .from('notification_preferences')
-          .select('reminder_30_days, reminder_7_days, reminder_1_day') // removed email_enabled, email_time
+          .select('reminder_30_days, reminder_7_days, reminder_1_day')
           .eq('user_id', session.user.id)
           .maybeSingle();
 
         if (error) throw error;
 
         if (!data) {
-          // write defaults once
           const { error: upErr } = await supabase
             .from('notification_preferences')
             .upsert(
@@ -77,9 +335,8 @@ export const Reminders: React.FC = () => {
             reminder_1_day: data.reminder_1_day,
           });
         }
-      } catch (e) {
-        console.error(e);
-        toast.error('Failed to load reminder settings.');
+      } catch (error) {
+        console.error('Failed to load reminder settings:', error);
       } finally {
         setSettingsLoading(false);
       }
@@ -88,67 +345,58 @@ export const Reminders: React.FC = () => {
     loadSettings();
   }, []);
 
-  // Save settings (only three toggles)
-const handleSaveSettings = async () => {
-  setSettingsSaving(true);
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session?.user) {
-      toast.error('You must be signed in.');
-      setSettingsSaving(false);
-      return;
-    }
+  // Save settings and schedule reminders
+  const handleSaveSettings = async () => {
+    setSettingsSaving(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        toast.error('Please sign in to save settings.');
+        return;
+      }
 
-    // 1) Save settings (this updates updated_at which resets the month)
-    const payload = {
-      user_id: session.user.id,
-      reminder_30_days: reminderSettings.reminder_30_days,
-      reminder_7_days: reminderSettings.reminder_7_days,
-      reminder_1_day: reminderSettings.reminder_1_day,
-      updated_at: new Date().toISOString(),
+      const payload = {
+        user_id: session.user.id,
+        reminder_30_days: reminderSettings.reminder_30_days,
+        reminder_7_days: reminderSettings.reminder_7_days,
+        reminder_1_day: reminderSettings.reminder_1_day,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase
+        .from('notification_preferences')
+        .upsert(payload, { onConflict: 'user_id' });
+
+      if (error) throw error;
+
+      // Schedule email reminders based on new settings
+      await scheduleSubscriptionReminders(session.user.id, reminderSettings, subscriptions);
+
+      toast.success('Reminder settings saved.');
+      setShowSettingsModal(false);
+    } catch (error) {
+      console.error('Error saving settings:', error);
+      toast.error('Could not save settings. Try again.');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  // Auto-schedule reminders when subscriptions change
+  useEffect(() => {
+    const scheduleReminders = async () => {
+      if (!loading && subscriptions.length > 0) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          await scheduleSubscriptionReminders(session.user.id, reminderSettings, subscriptions);
+        }
+      }
     };
 
-    const { error } = await supabase
-      .from('notification_preferences')
-      .upsert(payload, { onConflict: 'user_id' });
-    if (error) throw error;
+    scheduleReminders();
+  }, [subscriptions, reminderSettings, loading]);
 
-    toast.success('Reminder settings saved successfully!');
-    setShowSettingsModal(false);
-
-    // 2) Try to send (enforces monthly rate-limit)
-    const toastId = 'send-test-email';
-    toast.loading('Sending test email...', { id: toastId });
-
-    const res = await sendTestReminderEmail(reminderSettings);
-
-    if (res.sent) {
-      toast.success(`Email sent for ${res.count} subscription(s).`, { id: toastId });
-    } else if (res.reason === 'no_toggles_selected') {
-      toast.dismiss(toastId);
-      toast('No reminder window selected, so no email was sent.', { icon: 'ℹ️' });
-    } else if (res.reason === 'no_matches') {
-      toast.dismiss(toastId);
-      toast('No subscriptions match your selected window today. No email sent.', { icon: 'ℹ️' });
-    } else if (res.reason === 'rate_limited') {
-      toast.dismiss(toastId);
-      // @ts-ignore
-      const when = res.nextAllowedAt ? new Date(res.nextAllowedAt).toLocaleString() : 'later';
-      toast(`Monthly limit reached. You can receive the next reminder after ${when}.`, { icon: '⏳' });
-    } else {
-      toast.error('Saved, but no email sent.', { id: toastId });
-    }
-  } catch (e: any) {
-    console.error(e);
-    toast.error(e?.message || 'Saved, but failed to send the test email.');
-  } finally {
-    setSettingsSaving(false);
-  }
-};
-
-
-
-  // highlight effects (unchanged)
+  // Highlight UX
   useEffect(() => {
     if (highlightedSubscription) {
       const fadeTimer = setTimeout(() => {
@@ -245,8 +493,6 @@ const handleSaveSettings = async () => {
 
   const getInfoFadeStyle = () => (isInfoFading ? 'transition-all duration-3000 ease-out opacity-0 transform translate-y-2' : 'transition-all duration-300');
 
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-
   if (loading || settingsLoading) {
     return (
       <Layout>
@@ -325,9 +571,9 @@ const handleSaveSettings = async () => {
             ))}
           </div>
 
-          {/* Upcoming Renewals List (unchanged) */}
+          {/* Upcoming Renewals List */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-            className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
+            className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-2xl shadow-2xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200/50 dark:border-gray-700/50">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">All Upcoming Renewals</h3>
             </div>
@@ -442,11 +688,14 @@ const handleSaveSettings = async () => {
                   </button>
                 </div>
 
-                {/* Content: only the three toggles */}
+                {/* Content */}
                 <div className="p-6 space-y-6">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">30 Days Before (Pro only)</label>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">30 Days Before</label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Email every 5 days (30, 25, 20, 15, 10 days before)</p>
+                      </div>
                       <input
                         type="checkbox"
                         checked={reminderSettings.reminder_30_days}
@@ -456,7 +705,10 @@ const handleSaveSettings = async () => {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">7 Days Before</label>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">7 Days Before</label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Email every 2-3 days (7, 5, 3, 2 days before)</p>
+                      </div>
                       <input
                         type="checkbox"
                         checked={reminderSettings.reminder_7_days}
@@ -466,7 +718,10 @@ const handleSaveSettings = async () => {
                     </div>
 
                     <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-gray-700 dark:text-gray-300">1 Day Before (Pro only)</label>
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">1 Day Before</label>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Morning and evening reminders</p>
+                      </div>
                       <input
                         type="checkbox"
                         checked={reminderSettings.reminder_1_day}
@@ -474,6 +729,16 @@ const handleSaveSettings = async () => {
                         className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                       />
                     </div>
+                  </div>
+
+                  <div className="bg-gray-50/50 dark:bg-gray-700/50 rounded-xl p-4 border border-gray-200/50 dark:border-gray-600/50">
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Email Schedule:</h4>
+                    <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                      <li>• 30-day reminders: Every 5 days for planning ahead</li>
+                      <li>• 7-day reminders: Every 2-3 days for preparation</li>
+                      <li>• 1-day reminders: Morning (9 AM) and evening (6 PM)</li>
+                      <li>• Due today: Morning reminder (10 AM)</li>
+                    </ul>
                   </div>
                 </div>
 
