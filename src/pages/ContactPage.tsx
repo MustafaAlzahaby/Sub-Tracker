@@ -213,13 +213,7 @@ export const ContactPage: React.FC = () => {
 
           <div className="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700">
             <div className="text-center">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-                Other Ways to Reach Us
-              </h3>
               <div className="space-y-2">
-                <p className="text-gray-600 dark:text-gray-400">
-                  📧 Email: <a href="mailto:iamstark009@gmail.com" className="text-emerald-600 hover:text-emerald-700">iamstark009@gmail.com</a>
-                </p>
                 <p className="text-gray-600 dark:text-gray-400">
                   ⚡ Response time: Usually within 24 hours
                 </p>

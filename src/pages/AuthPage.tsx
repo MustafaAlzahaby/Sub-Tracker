@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { motion, AnimatePresence } from 'framer-motion';
-import { CreditCard, Mail, Lock, User, Eye, EyeOff, ArrowRight, Sparkles, Shield, Zap, CheckCircle, AlertCircle, Loader2, UserCheck, UserX } from 'lucide-react';
+import {
+  CreditCard, Mail, Lock, User, Eye, EyeOff, ArrowRight, Sparkles, Shield, Zap,
+  CheckCircle, AlertCircle, Loader2, UserCheck, UserX
+} from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
@@ -17,6 +20,7 @@ interface RegisterFormData {
   email: string;
   password: string;
   confirmPassword: string;
+  acceptTerms: boolean; // ✅ NEW
 }
 
 interface ResetFormData {
@@ -48,7 +52,15 @@ export const AuthPage: React.FC = () => {
   });
 
   const loginForm = useForm<LoginFormData>();
-  const registerForm = useForm<RegisterFormData>();
+  const registerForm = useForm<RegisterFormData>({
+    defaultValues: {
+      fullName: '',
+      email: '',
+      password: '',
+      confirmPassword: '',
+      acceptTerms: false, // ✅ NEW default
+    }
+  });
   const resetForm = useForm<ResetFormData>();
 
   // Enhanced email validation function
@@ -89,7 +101,7 @@ export const AuthPage: React.FC = () => {
         .single();
 
       if (error && error.code !== 'PGRST116') {
-        // PGRST116 is "not found" error, which is expected for non-existent users
+        // PGRST116 is "not found" (expected if user doesn't exist)
         console.error('Error checking user existence:', error);
         setEmailValidation({
           isValidating: false,
@@ -141,7 +153,7 @@ export const AuthPage: React.FC = () => {
 
     const timeoutId = setTimeout(() => {
       validateEmailAndUser(email);
-    }, 800); // Debounce for 800ms
+    }, 800);
 
     return () => clearTimeout(timeoutId);
   }, [resetForm.watch('email'), isReset]);
@@ -173,6 +185,12 @@ export const AuthPage: React.FC = () => {
       return;
     }
 
+    // ✅ Block if Terms not accepted
+    if (!data.acceptTerms) {
+      toast.error('You must accept the Terms of Service and Privacy Policy to create an account.');
+      return;
+    }
+
     try {
       setIsLoading(true);
       const { error } = await signUp(data.email, data.password, data.fullName);
@@ -187,28 +205,22 @@ export const AuthPage: React.FC = () => {
     }
   };
 
-  // 🎯 NEW: Google Sign-In Handler
+  // Google Sign-In Handler
   const handleGoogleSignIn = async () => {
     try {
       setIsGoogleLoading(true);
-      console.log('🔍 Starting Google sign-in...');
-      
       const { error } = await signInWithGoogle();
-      
       if (!error) {
-        console.log('✅ Google sign-in initiated successfully');
-        // The redirect will happen automatically
-        // The auth state change listener will handle the success toast
+        // redirect handled by Supabase
       }
     } catch (error) {
-      console.error('❌ Google sign-in error:', error);
+      console.error('Google sign-in error:', error);
     } finally {
       setIsGoogleLoading(false);
     }
   };
 
   const handleReset = async (data: ResetFormData) => {
-    // Validate email and user existence first
     if (!emailValidation.hasChecked) {
       await validateEmailAndUser(data.email);
       return;
@@ -227,10 +239,7 @@ export const AuthPage: React.FC = () => {
     try {
       setIsLoading(true);
       const { error } = await resetPassword(data.email);
-      
-      if (!error) {
-        setResetEmailSent(true);
-      }
+      if (!error) setResetEmailSent(true);
     } catch (error) {
       console.error('Reset error:', error);
     } finally {
@@ -242,51 +251,31 @@ export const AuthPage: React.FC = () => {
   if (resetEmailSent) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-slate-900 dark:to-gray-800 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-md w-full space-y-8"
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full space-y-8">
           <div className="text-center">
             <div className="w-16 h-16 bg-gradient-to-r from-emerald-500 via-blue-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
               <CheckCircle className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Check Your Email
-            </h2>
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-              We've sent a password reset link to your email address
-            </p>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Check Your Email</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">We've sent a password reset link to your email address</p>
           </div>
 
           <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50 space-y-6">
             <div className="text-center space-y-4">
               <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl">
-                <p className="text-emerald-700 dark:text-emerald-300 text-sm">
-                  📧 Password reset email sent successfully!
-                </p>
+                <p className="text-emerald-700 dark:text-emerald-300 text-sm">📧 Password reset email sent successfully!</p>
               </div>
-              
               <div className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
                 <p>Please check your email and click the reset link to continue.</p>
                 <p>The link will expire in 1 hour for security reasons.</p>
-                <p className="font-medium text-blue-600 dark:text-blue-400">
-                  💡 The link will take you directly to the password reset page
-                </p>
+                <p className="font-medium text-blue-600 dark:text-blue-400">💡 The link will take you directly to the password reset page</p>
               </div>
-
               <div className="pt-4 space-y-3">
-                <Link
-                  to="/login"
-                  className="inline-flex items-center text-blue-600 hover:text-blue-500 transition-colors font-medium"
-                >
+                <Link to="/login" className="inline-flex items-center text-blue-600 hover:text-blue-500 transition-colors font-medium">
                   <ArrowRight className="w-4 h-4 mr-2 rotate-180" />
                   Back to Sign In
                 </Link>
-                
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Didn't receive the email? Check your spam folder or try again.
-                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Didn't receive the email? Check your spam folder or try again.</div>
               </div>
             </div>
           </div>
@@ -297,11 +286,7 @@ export const AuthPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-gray-900 dark:via-slate-900 dark:to-gray-800 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full space-y-8"
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full space-y-8">
         {/* Header */}
         <div className="text-center">
           <Link to="/" className="inline-flex items-center space-x-3 mb-6 group">
@@ -380,7 +365,7 @@ export const AuthPage: React.FC = () => {
 
         {/* Form */}
         <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl py-8 px-6 shadow-2xl rounded-2xl border border-gray-200/50 dark:border-gray-700/50">
-          {/* 🎯 NEW: Google Sign-In Button (for Login and Register only) */}
+          {/* Google Sign-In */}
           {(isLogin || isRegister) && (
             <div className="mb-6">
               <motion.button
@@ -627,6 +612,34 @@ export const AuthPage: React.FC = () => {
                   )}
                 </div>
 
+                {/* ✅ Terms checkbox */}
+                <div className="pt-1">
+                  <label className="flex items-start space-x-3 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      {...registerForm.register('acceptTerms', { required: true })}
+                      className="mt-1 w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
+                    />
+                    <span className="text-sm text-gray-600 dark:text-gray-300 leading-5">
+                      I agree to the{' '}
+                      <Link to="/terms" className="text-blue-600 hover:text-blue-500 underline underline-offset-2">
+                        Terms of Service
+                      </Link>{' '}
+                      and{' '}
+                      <Link to="/privacy" className="text-blue-600 hover:text-blue-500 underline underline-offset-2">
+                        Privacy Policy
+                      </Link>
+                      .
+                    </span>
+                  </label>
+                  {registerForm.formState.errors.acceptTerms && (
+                    <p className="mt-2 text-sm text-red-600 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      You must accept the Terms and Privacy Policy to continue.
+                    </p>
+                  )}
+                </div>
+
                 <button
                   type="submit"
                   disabled={isLoading}
@@ -693,7 +706,6 @@ export const AuthPage: React.FC = () => {
                     </div>
                   </div>
                   
-                  {/* Enhanced validation feedback */}
                   <AnimatePresence>
                     {emailValidation.hasChecked && (
                       <motion.div

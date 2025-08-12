@@ -153,11 +153,6 @@ export const PrivacyPolicyPage: React.FC = () => {
               <p className="text-gray-600 dark:text-gray-400">
                 If you have any questions about this Privacy Policy, please contact us at:
               </p>
-              <div className="mt-4 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl">
-                <p className="text-emerald-700 dark:text-emerald-300">
-                  📧 Email: <a href="mailto:iamstark009@gmail.com" className="underline">iamstark009@gmail.com</a>
-                </p>
-              </div>
             </div>
           </section>
 
