@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { Analytics } from '@vercel/analytics/react';
 import { AuthProvider } from './components/AuthProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LandingPage } from './pages/LandingPage';
@@ -11,7 +12,7 @@ import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { TermsOfServicePage } from './pages/TermsOfServicePage';
 import { Dashboard } from './pages/Dashboard';
 import { SubscriptionsPage } from './pages/Subscriptions';
-import { Analytics } from './pages/Analytics';
+import { Analytics as AnalyticsPage } from './pages/Analytics';
 import { Reports } from './pages/Reports';
 import { Reminders } from './pages/Reminders';
 import { Account } from './pages/Account';
@@ -59,7 +60,7 @@ const MemoizedPrivacyPolicyPage = memo(PrivacyPolicyPage);
 const MemoizedTermsOfServicePage = memo(TermsOfServicePage);
 const MemoizedDashboard = memo(Dashboard);
 const MemoizedSubscriptionsPage = memo(SubscriptionsPage);
-const MemoizedAnalytics = memo(Analytics);
+const MemoizedAnalyticsPage = memo(AnalyticsPage);
 const MemoizedReports = memo(Reports);
 const MemoizedReminders = memo(Reminders);
 const MemoizedAccount = memo(Account);
@@ -101,7 +102,7 @@ function App() {
               path="/analytics" 
               element={
                 <ProtectedRoute>
-                  <MemoizedAnalytics />
+                  <MemoizedAnalyticsPage />
                 </ProtectedRoute>
               } 
             />
@@ -135,6 +136,7 @@ function App() {
           </Routes>
           
           <MemoizedToaster />
+          <Analytics />
         </div>
       </Router>
     </AuthProvider>
