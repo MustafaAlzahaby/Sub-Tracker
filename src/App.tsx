@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { AuthProvider } from './components/AuthProvider';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { LandingPage } from './pages/LandingPage';
@@ -137,6 +138,7 @@ function App() {
           
           <MemoizedToaster />
           <Analytics />
+          <SpeedInsights />
         </div>
       </Router>
     </AuthProvider>
