@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { paymobService, PaymentData, PaymobResponse } from '../lib/paymob';
+import { verifonaService, PaymentRequest, PaymentResponse } from '../lib/verifona';
 import { useAuth } from './useAuth';
 import { useUserPlan } from './useUserPlan';
 import toast from 'react-hot-toast';
@@ -16,74 +16,49 @@ export const usePayment = () => {
       return null;
     }
 
+    // Only support pro plan now
+    if (planType !== 'pro') {
+      toast.error('Only Pro plan is available for upgrade');
+      return null;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const planPrices = {
-        pro: 4.99,
-        business: 19.99
-      };
+      const planPrice = 7.99; // Pro plan price
+      const orderId = `subtracker_pro_${user.id}_${Date.now()}`;
 
-      const amount = planPrices[planType];
-      const orderId = `subtracker_${planType}_${user.id}_${Date.now()}`;
+      // Get current URL for return/cancel URLs
+      const baseUrl = window.location.origin;
+      const returnUrl = `${baseUrl}/account?payment=success`;
+      const cancelUrl = `${baseUrl}/account?payment=cancelled`;
 
-      const paymentData: PaymentData = {
-        amount: amount,
+      const paymentRequest: PaymentRequest = {
+        amount: planPrice,
         currency: 'USD',
         orderId: orderId,
         customerEmail: user.email || '',
         customerName: user.user_metadata?.full_name || 'SubTracker User',
-        customerPhone: user.user_metadata?.phone || undefined,
-        billingData: {
-          email: user.email || '',
-          first_name: user.user_metadata?.full_name?.split(' ')[0] || 'Customer',
-          last_name: user.user_metadata?.full_name?.split(' ').slice(1).join(' ') || 'User',
-          phone_number: user.user_metadata?.phone || '+20100000000',
-          apartment: 'NA',
-          floor: 'NA',
-          street: 'NA',
-          building: 'NA',
-          shipping_method: 'NA',
-          postal_code: 'NA',
-          city: 'Cairo',
-          country: 'Egypt',
-          state: 'Cairo'
-        }
+        productName: 'SubTracker Pro Plan - Monthly Subscription',
+        returnUrl,
+        cancelUrl
       };
 
-      console.log('🚀 Initiating payment for plan:', planType);
-      const response = await paymobService.initiatePayment(paymentData);
+      console.log('🚀 Initiating Verifona payment for Pro plan');
+      const response = await verifonaService.initiatePayment(paymentRequest);
 
-      // Open payment page in new window
-      const paymentWindow = window.open(
-        response.payment_url,
-        'paymob_payment',
-        'width=800,height=600,scrollbars=yes,resizable=yes'
-      );
-
-      if (!paymentWindow) {
-        throw new Error('Failed to open payment window. Please allow popups for this site.');
+      if (!response.success) {
+        throw new Error(response.error || 'Payment initiation failed');
       }
 
-      // Listen for payment completion
-      const checkPaymentStatus = setInterval(async () => {
-        if (paymentWindow.closed) {
-          clearInterval(checkPaymentStatus);
-          
-          // Show success message and upgrade plan
-          toast.success(`Successfully upgraded to ${planType.charAt(0).toUpperCase() + planType.slice(1)} plan!`);
-          
-          // Upgrade the user's plan
-          await upgradePlan(planType);
-          
-          setLoading(false);
-        }
-      }, 1000);
+      // The payment form will redirect to Verifona/2Checkout
+      // Success/failure will be handled by return URLs
+      toast.info('Redirecting to secure payment page...');
 
       return response;
     } catch (error: any) {
-      console.error('❌ Payment initiation failed:', error);
+      console.error('❌ Verifona payment initiation failed:', error);
       setError(error.message || 'Payment failed');
       toast.error(error.message || 'Payment failed. Please try again.');
       setLoading(false);
@@ -93,10 +68,12 @@ export const usePayment = () => {
 
   const verifyPayment = async (callbackData: any) => {
     try {
-      const isValid = paymobService.verifyPayment(callbackData);
+      const isValid = verifonaService.verifyPayment(callbackData);
       
       if (isValid) {
         toast.success('Payment verified successfully!');
+        // Upgrade the user's plan
+        await upgradePlan('pro');
         return true;
       } else {
         toast.error('Payment verification failed');

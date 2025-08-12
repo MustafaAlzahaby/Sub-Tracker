@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout/Layout';
 import { useSubscriptions } from '../hooks/useSubscriptions';
+import { useUserPlan } from '../hooks/useUserPlan';
 import { Bell, Calendar, Clock, AlertCircle, Settings, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format, differenceInDays } from 'date-fns';
@@ -285,6 +286,7 @@ const shouldSendReminder = async (userId: string, subscriptionId: string, remind
 
 export const Reminders: React.FC = () => {
   const { subscriptions, loading } = useSubscriptions();
+  const { userPlan, loading: planLoading } = useUserPlan();
   const [searchParams] = useSearchParams();
   const highlightId = searchParams.get('highlight');
 
@@ -297,6 +299,9 @@ export const Reminders: React.FC = () => {
   const [settingsLoading, setSettingsLoading] = useState<boolean>(true);
   const [settingsSaving, setSettingsSaving] = useState<boolean>(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  // Check if user has pro plan
+  const isProUser = userPlan?.plan_type === 'pro';
 
   // Load settings
   useEffect(() => {
@@ -322,12 +327,19 @@ export const Reminders: React.FC = () => {
             .upsert(
               {
                 user_id: session.user.id,
-                ...DEFAULT_SETTINGS,
+                // Free users only get 7-day reminders by default
+                reminder_30_days: isProUser,
+                reminder_7_days: true,
+                reminder_1_day: isProUser,
               },
               { onConflict: 'user_id' }
             );
           if (upErr) throw upErr;
-          setReminderSettings(DEFAULT_SETTINGS);
+          setReminderSettings({
+            reminder_30_days: isProUser,
+            reminder_7_days: true,
+            reminder_1_day: isProUser,
+          });
         } else {
           setReminderSettings({
             reminder_30_days: data.reminder_30_days,
@@ -343,7 +355,7 @@ export const Reminders: React.FC = () => {
     };
 
     loadSettings();
-  }, []);
+  }, [isProUser]);
 
   // Save settings and schedule reminders
   const handleSaveSettings = async () => {
@@ -493,7 +505,7 @@ export const Reminders: React.FC = () => {
 
   const getInfoFadeStyle = () => (isInfoFading ? 'transition-all duration-3000 ease-out opacity-0 transform translate-y-2' : 'transition-all duration-300');
 
-  if (loading || settingsLoading) {
+  if (loading || settingsLoading || planLoading) {
     return (
       <Layout>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -691,19 +703,24 @@ export const Reminders: React.FC = () => {
                 {/* Content */}
                 <div className="p-6 space-y-6">
                   <div className="space-y-4">
+                    {/* 30 Days Before - Pro Only */}
                     <div className="flex items-center justify-between">
                       <div>
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">30 Days Before</label>
+                        <label className={`text-sm font-medium ${isProUser ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
+                          30 Days Before {!isProUser && '(Pro Only)'}
+                        </label>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Email every 5 days (30, 25, 20, 15, 10 days before)</p>
                       </div>
                       <input
                         type="checkbox"
                         checked={reminderSettings.reminder_30_days}
                         onChange={(e) => setReminderSettings((prev) => ({ ...prev, reminder_30_days: e.target.checked }))}
+                        disabled={!isProUser}
                         className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                       />
                     </div>
 
+                    {/* 7 Days Before - Available for All */}
                     <div className="flex items-center justify-between">
                       <div>
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">7 Days Before</label>
@@ -717,26 +734,52 @@ export const Reminders: React.FC = () => {
                       />
                     </div>
 
+                    {/* 1 Day Before - Pro Only */}
                     <div className="flex items-center justify-between">
                       <div>
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">1 Day Before</label>
+                        <label className={`text-sm font-medium ${isProUser ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
+                          1 Day Before {!isProUser && '(Pro Only)'}
+                        </label>
                         <p className="text-xs text-gray-500 dark:text-gray-400">Morning and evening reminders</p>
                       </div>
                       <input
                         type="checkbox"
                         checked={reminderSettings.reminder_1_day}
                         onChange={(e) => setReminderSettings((prev) => ({ ...prev, reminder_1_day: e.target.checked }))}
+                        disabled={!isProUser}
                         className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 dark:focus:ring-blue-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-700 dark:border-gray-600"
                       />
                     </div>
                   </div>
 
+                  {/* Plan Information */}
+                  <div className={`rounded-xl p-4 border ${isProUser ? 'bg-emerald-50/50 dark:bg-emerald-900/20 border-emerald-200/50 dark:border-emerald-700/50' : 'bg-blue-50/50 dark:bg-blue-900/20 border-blue-200/50 dark:border-blue-700/50'}`}>
+                    <h4 className={`text-sm font-medium mb-2 ${isProUser ? 'text-emerald-700 dark:text-emerald-300' : 'text-blue-700 dark:text-blue-300'}`}>
+                      {isProUser ? '✨ Pro Plan Features:' : '🆓 Free Plan Features:'}
+                    </h4>
+                    <ul className={`text-xs space-y-1 ${isProUser ? 'text-emerald-600 dark:text-emerald-400' : 'text-blue-600 dark:text-blue-400'}`}>
+                      {isProUser ? (
+                        <>
+                          <li>• All reminder types (30, 7, 1 day)</li>
+                          <li>• Multiple emails per period</li>
+                          <li>• Advanced scheduling options</li>
+                        </>
+                      ) : (
+                        <>
+                          <li>• 7-day reminders available</li>
+                          <li>• Upgrade to Pro for 30-day and 1-day reminders</li>
+                          <li>• More advanced scheduling with Pro</li>
+                        </>
+                      )}
+                    </ul>
+                  </div>
+
                   <div className="bg-gray-50/50 dark:bg-gray-700/50 rounded-xl p-4 border border-gray-200/50 dark:border-gray-600/50">
                     <h4 className="text-sm font-medium text-gray-900 dark:text-white mb-2">Email Schedule:</h4>
                     <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                      <li>• 30-day reminders: Every 5 days for planning ahead</li>
+                      <li>• 30-day reminders: Every 5 days for planning ahead {!isProUser && '(Pro only)'}</li>
                       <li>• 7-day reminders: Every 2-3 days for preparation</li>
-                      <li>• 1-day reminders: Morning (9 AM) and evening (6 PM)</li>
+                      <li>• 1-day reminders: Morning (9 AM) and evening (6 PM) {!isProUser && '(Pro only)'}</li>
                       <li>• Due today: Morning reminder (10 AM)</li>
                     </ul>
                   </div>
