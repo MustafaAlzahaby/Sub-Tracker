@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, Crown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useUserPlan } from '../../hooks/useUserPlan';
-import { PlanUpgradeModal } from './PlanUpgradeModal';
+import { PaddleUpgradeModal } from './PaddleUpgradeModal';
 
 interface FeatureGateProps {
   feature: string;
@@ -63,7 +63,7 @@ export const FeatureGate: React.FC<FeatureGateProps> = ({
         </div>
       </div>
 
-      <PlanUpgradeModal
+      <PaddleUpgradeModal
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         feature={feature}

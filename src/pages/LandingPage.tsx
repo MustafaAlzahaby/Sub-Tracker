@@ -110,7 +110,8 @@ export const LandingPage: React.FC = () => {
       ],
       cta: 'Start Free',
       popular: false,
-      gradient: 'from-gray-500 to-slate-600'
+      gradient: 'from-gray-500 to-slate-600',
+      planType: 'free' as const
     },
     {
       name: 'Pro',
@@ -131,7 +132,8 @@ export const LandingPage: React.FC = () => {
       cta: 'Start Free',
       popular: true,
       gradient: 'from-blue-500 to-indigo-600',
-      savings: isAnnual ? 'Save 17%' : null
+      savings: isAnnual ? 'Save 17%' : null,
+      planType: 'pro' as const
     }
   ];
 
@@ -863,6 +865,7 @@ export const LandingPage: React.FC = () => {
               <span className="text-gray-400 text-sm">Made with</span>
               <Heart className="w-4 h-4 text-red-500" />
               <span className="text-gray-400 text-sm">for subscription freedom</span>
+              <span className="text-gray-400 text-sm">• Powered by Paddle</span>
             </div>
           </div>
         </div>

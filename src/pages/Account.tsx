@@ -3,26 +3,29 @@ import { useSearchParams } from 'react-router-dom';
 import { Layout } from '../components/Layout/Layout';
 import { useAuth } from '../hooks/useAuth';
 import { useUserPlan } from '../hooks/useUserPlan';
+import { usePaddle } from '../hooks/usePaddle';
 import { User, CreditCard, Settings, Crown, Zap, Star, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { usePayment } from '../hooks/usePayment';
 import toast from 'react-hot-toast';
 
 export const Account: React.FC = () => {
   const { user } = useAuth();
   const { userPlan, loading } = useUserPlan();
-  const { initiatePayment, loading: paymentLoading } = usePayment();
+  const { openCheckout, loading: paymentLoading, handlePaymentSuccess } = usePaddle();
   const [searchParams] = useSearchParams();
   const [showBilling, setShowBilling] = useState(false);
 
   // Handle payment callback
   React.useEffect(() => {
     const paymentStatus = searchParams.get('payment');
-    if (paymentStatus === 'success') {
-      toast.success('🎉 Payment successful! Welcome to SubTracker Pro!');
+    const planType = searchParams.get('plan') as 'pro' | null;
+    
+    if (paymentStatus === 'success' && planType) {
+      handlePaymentSuccess(planType);
       // Remove the parameter from URL
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete('payment');
+      newUrl.searchParams.delete('plan');
       window.history.replaceState({}, '', newUrl.toString());
     } else if (paymentStatus === 'cancelled') {
       toast.error('Payment was cancelled. You can try again anytime.');
@@ -31,7 +34,7 @@ export const Account: React.FC = () => {
       newUrl.searchParams.delete('payment');
       window.history.replaceState({}, '', newUrl.toString());
     }
-  }, [searchParams]);
+  }, [searchParams, handlePaymentSuccess]);
 
   const plans = [
     {
@@ -87,7 +90,7 @@ export const Account: React.FC = () => {
     }
 
     try {
-      await initiatePayment('pro');
+      await openCheckout('pro');
     } catch (error) {
       console.error('Payment initiation failed:', error);
     }
@@ -100,9 +103,9 @@ export const Account: React.FC = () => {
   if (loading) {
     return (
       <Layout>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <h3 className="font-semibold text-gray-900 dark:text-white">Secure Payments with Paddle</h3>
           <div className="animate-pulse space-y-6">
-            <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-1/4"></div>
+                      Secure payment processing powered by Paddle. Supports all major credit cards, PayPal, Apple Pay, Google Pay, and digital wallets worldwide.
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {[...Array(2)].map((_, i) => (
                 <div key={i} className="h-64 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>

@@ -7,7 +7,7 @@ A beautiful, production-ready subscription management platform built with React,
 - **Smart Subscription Tracking** - Track unlimited subscriptions with intelligent categorization
 - **Plan-Based Reminders** - Advanced reminder system based on user plan (Free vs Pro)
 - **Beautiful Analytics** - Detailed spending insights and trends
-- **Secure Payments** - Integrated with Verifona/2Checkout for Pro upgrades
+- **Secure Payments** - Integrated with Paddle for Pro upgrades
 - **Real-time Notifications** - Smart notifications for upcoming renewals
 - **Export & Reports** - Generate detailed reports and export data
 - **Responsive Design** - Works perfectly on all devices
@@ -16,7 +16,7 @@ A beautiful, production-ready subscription management platform built with React,
 
 - **Frontend**: React 18, TypeScript, Tailwind CSS
 - **Backend**: Supabase (PostgreSQL, Auth, Real-time)
-- **Payments**: Verifona/2Checkout
+- **Payments**: Paddle
 - **Deployment**: Vercel
 - **UI Components**: Lucide React, Framer Motion
 - **Charts**: Recharts
@@ -26,7 +26,7 @@ A beautiful, production-ready subscription management platform built with React,
 - Node.js 18+ 
 - npm or yarn
 - Supabase account
-- Verifona/2Checkout merchant account
+- Paddle merchant account
 
 ## 🛠️ Installation & Setup
 
@@ -47,10 +47,12 @@ Create a `.env.local` file in the root directory:
 VITE_SUPABASE_URL=your_supabase_project_url
 VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
 
-# Verifona/2Checkout Payment Configuration
-VITE_VERIFONA_MERCHANT_CODE=your_merchant_code
-VITE_VERIFONA_SECRET_KEY=your_secret_key
-VITE_VERIFONA_ENVIRONMENT=sandbox
+# Paddle Payment Configuration
+VITE_PADDLE_ENVIRONMENT=sandbox
+VITE_PADDLE_API_TOKEN=your_paddle_api_token
+VITE_PADDLE_CLIENT_TOKEN=your_paddle_client_token
+VITE_PADDLE_PRO_PRICE_ID=your_pro_price_id
+VITE_PADDLE_WEBHOOK_SECRET=your_webhook_secret
 
 # App Configuration (for production)
 VITE_APP_URL=https://your-domain.vercel.app
@@ -63,12 +65,13 @@ VITE_APP_URL=https://your-domain.vercel.app
 3. Set up Row Level Security (RLS) policies
 4. Configure authentication settings
 
-### 4. Verifona/2Checkout Setup
+### 4. Paddle Setup
 
-1. Create a merchant account with Verifona or 2Checkout
-2. Get your merchant code and secret key
+1. Create a merchant account with Paddle
+2. Get your API token and client-side token
+3. Create products and prices in Paddle dashboard
 3. Configure webhook URLs for payment callbacks
-4. Set up return URLs for successful/cancelled payments
+4. Set up success/cancel URLs for checkout completion
 
 ## 🚀 Deployment to Vercel
 
@@ -90,9 +93,11 @@ In your Vercel dashboard, add the following environment variables:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `VITE_VERIFONA_MERCHANT_CODE`
-- `VITE_VERIFONA_SECRET_KEY`
-- `VITE_VERIFONA_ENVIRONMENT` (set to "production")
+- `VITE_PADDLE_API_TOKEN`
+- `VITE_PADDLE_CLIENT_TOKEN`
+- `VITE_PADDLE_PRO_PRICE_ID`
+- `VITE_PADDLE_WEBHOOK_SECRET`
+- `VITE_PADDLE_ENVIRONMENT` (set to "production")
 - `VITE_APP_URL` (your Vercel domain)
 
 ### 4. Configure Custom Domain (Optional)
@@ -103,22 +108,21 @@ In your Vercel dashboard, add the following environment variables:
 
 ## 💳 Payment Integration
 
-### Verifona/2Checkout Integration
+### Paddle Integration
 
-The app uses Verifona/2Checkout for secure payment processing:
+The app uses Paddle for secure payment processing:
 
-1. **Payment Flow**: User clicks upgrade → Redirects to Verifona → Returns to app
-2. **Security**: All payments are processed securely by Verifona
-3. **Verification**: Payment callbacks are verified using HMAC signatures
+1. **Payment Flow**: User clicks upgrade → Opens Paddle checkout overlay → Returns to app
+2. **Security**: All payments are processed securely by Paddle
+3. **Verification**: Payment webhooks are verified using HMAC signatures
 4. **Plan Upgrade**: Successful payments automatically upgrade user to Pro plan
 
 ### Webhook Configuration
 
-Set up webhooks in your Verifona/2Checkout dashboard:
+Set up webhooks in your Paddle dashboard:
 
 - **Success URL**: `https://your-domain.vercel.app/account?payment=success`
-- **Cancel URL**: `https://your-domain.vercel.app/account?payment=cancelled`
-- **Webhook URL**: `https://your-domain.vercel.app/api/webhooks/payment`
+- **Webhook URL**: `https://your-domain.vercel.app/functions/v1/paddle-webhook`
 
 ## 📊 Plan Features
 
