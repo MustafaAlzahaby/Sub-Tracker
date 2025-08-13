@@ -1,6 +1,6 @@
 # 🚀 SubTracker Deployment Guide
 
-This guide will walk you through deploying SubTracker to production using Vercel and setting up payment processing with Verifona/2Checkout.
+This guide will walk you through deploying SubTracker to production using Vercel and setting up payment processing with Paddle.
 
 ## 📋 Pre-Deployment Checklist
 
@@ -11,36 +11,42 @@ This guide will walk you through deploying SubTracker to production using Vercel
 - [x] Authentication settings configured
 
 ### 2. Payment Provider Setup
-- [ ] Verifona/2Checkout merchant account created
-- [ ] Merchant code and secret key obtained
+- [ ] Paddle merchant account created
+- [ ] API token and client-side token obtained
+- [ ] Products and prices created in Paddle dashboard
 - [ ] Webhook URLs configured
-- [ ] Return URLs configured
+- [ ] Success URLs configured
 
 ### 3. Environment Variables
 - [ ] All environment variables documented
 - [ ] Production values ready
 - [ ] Secrets secured
 
-## 🔧 Step 1: Verifona/2Checkout Setup
+## 🔧 Step 1: Paddle Setup
 
 ### Create Merchant Account
 
-1. **Sign up for Verifona/2Checkout**:
-   - Go to [2Checkout.com](https://www.2checkout.com) or [Verifona.com](https://verifona.com)
+1. **Sign up for Paddle**:
+   - Go to [Paddle.com](https://www.paddle.com)
    - Create a merchant account
    - Complete verification process
 
-2. **Get Credentials**:
-   - Navigate to Account Settings → API
-   - Copy your Merchant Code
-   - Generate and copy Secret Key
+2. **Get API Credentials**:
+   - Navigate to Developer Tools → Authentication
+   - Generate and copy API Token
+   - Copy your Client-side Token
    - Note the environment (sandbox/production)
 
-3. **Configure Webhooks**:
+3. **Create Products and Prices**:
+   - Go to Catalog → Products
+   - Create "SubTracker Pro" product
+   - Add monthly price ($7.99 USD)
+   - Copy the Price ID for your .env file
+
+4. **Configure Webhooks**:
    ```
    Success URL: https://your-domain.vercel.app/account?payment=success
-   Cancel URL: https://your-domain.vercel.app/account?payment=cancelled
-   Webhook URL: https://your-domain.vercel.app/api/webhooks/payment
+   Webhook URL: https://your-domain.vercel.app/functions/v1/paddle-webhook
    ```
 
 ## 🌐 Step 2: Vercel Deployment
@@ -79,10 +85,12 @@ In your Vercel dashboard, add these environment variables:
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your_anon_key
 
-# Verifona/2Checkout
-VITE_VERIFONA_MERCHANT_CODE=your_merchant_code
-VITE_VERIFONA_SECRET_KEY=your_secret_key
-VITE_VERIFONA_ENVIRONMENT=production
+# Paddle
+VITE_PADDLE_API_TOKEN=your_paddle_api_token
+VITE_PADDLE_CLIENT_TOKEN=your_paddle_client_token
+VITE_PADDLE_PRO_PRICE_ID=your_pro_price_id
+VITE_PADDLE_WEBHOOK_SECRET=your_webhook_secret
+VITE_PADDLE_ENVIRONMENT=production
 
 # App
 VITE_APP_URL=https://your-domain.vercel.app
@@ -114,14 +122,14 @@ VITE_APP_URL=https://your-domain.vercel.app
    - Add your Vercel domain to CORS origins
    - Update any API restrictions
 
-## 💳 Step 4: Payment Testing
+## 💳 Step 4: Paddle Payment Testing
 
-### Test Payment Flow
+### Test Paddle Integration
 
 1. **Sandbox Testing**:
    ```bash
-   # Set environment to sandbox
-   VITE_VERIFONA_ENVIRONMENT=sandbox
+   # Set Paddle environment to sandbox
+   VITE_PADDLE_ENVIRONMENT=sandbox
    ```
 
 2. **Test Scenarios**:
@@ -129,11 +137,13 @@ VITE_APP_URL=https://your-domain.vercel.app
    - [ ] Cancelled payment
    - [ ] Failed payment
    - [ ] Plan upgrade after payment
+   - [ ] Webhook processing
 
 3. **Production Testing**:
    - Use small amounts for testing
    - Test with real payment methods
    - Verify plan upgrades work correctly
+   - Test webhook delivery
 
 ## 📊 Step 5: Monitoring Setup
 
@@ -175,6 +185,7 @@ VITE_APP_URL=https://your-domain.vercel.app
 - [ ] Notifications system
 - [ ] Analytics and reports
 - [ ] Data export
+- [ ] Paddle webhook processing
 
 ### Performance Optimization
 
@@ -245,8 +256,9 @@ VITE_APP_URL=https://your-domain.vercel.app
    - Redeploy after adding variables
    - Check Vercel dashboard for typos
 
-2. **Payment Integration Issues**:
-   - Verify merchant credentials
+2. **Paddle Integration Issues**:
+   - Verify API tokens and client-side token
+   - Check product and price IDs
    - Check webhook URLs
    - Test in sandbox first
 
@@ -266,6 +278,7 @@ If you encounter issues:
 
 1. Check Vercel deployment logs
 2. Check Supabase logs
+3. Check Paddle webhook logs
 3. Check browser console for errors
 4. Contact support: iamstark009@gmail.com
 
@@ -288,4 +301,4 @@ If you encounter issues:
 
 ---
 
-🎉 **Congratulations!** Your SubTracker app is now live in production!
+🎉 **Congratulations!** Your SubTracker app with Paddle integration is now live in production!
