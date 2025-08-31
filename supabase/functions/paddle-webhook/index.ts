@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import { createClient } from '@supabase/supabase-js';
-=======
-import { createClient } from 'npm:@supabase/supabase-js@2';
->>>>>>> 7074a79d302a33b5a1db8773ddaa93f91f5d4d8a
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,18 +30,13 @@ interface PaddleWebhookEvent {
   };
 }
 
-<<<<<<< HEAD
 // Add Paddle API proxy for GET requests
 (globalThis as any).serve(async (req: Request) => {
-=======
-Deno.serve(async (req: Request) => {
->>>>>>> 7074a79d302a33b5a1db8773ddaa93f91f5d4d8a
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-<<<<<<< HEAD
   // Use environment variables from .env.local (not committed to GitHub)
   const paddleApiToken = process.env.VITE_PADDLE_API_TOKEN;
   const paddleWebhookSecret = process.env.VITE_PADDLE_WEBHOOK_SECRET;
@@ -131,12 +122,6 @@ Deno.serve(async (req: Request) => {
     if (!supabaseUrl || !supabaseServiceKey) {
       return new Response('Missing Supabase configuration', { status: 500, headers: corsHeaders });
     }
-=======
-  try {
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
->>>>>>> 7074a79d302a33b5a1db8773ddaa93f91f5d4d8a
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get webhook signature for verification
@@ -152,11 +137,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Verify webhook signature (implement proper verification)
-<<<<<<< HEAD
     const webhookSecret = process.env.PADDLE_WEBHOOK_SECRET;
-=======
-    const webhookSecret = Deno.env.get('PADDLE_WEBHOOK_SECRET');
->>>>>>> 7074a79d302a33b5a1db8773ddaa93f91f5d4d8a
     if (!webhookSecret) {
       console.error('❌ Webhook secret not configured');
       return new Response('Webhook secret not configured', { 
