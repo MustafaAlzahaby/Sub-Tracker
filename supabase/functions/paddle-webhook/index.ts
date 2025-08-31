@@ -1,4 +1,4 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -30,16 +30,98 @@ interface PaddleWebhookEvent {
   };
 }
 
-Deno.serve(async (req: Request) => {
+// Add Paddle API proxy for GET requests
+(globalThis as any).serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Use environment variables from .env.local (not committed to GitHub)
+  const paddleApiToken = process.env.VITE_PADDLE_API_TOKEN;
+  const paddleWebhookSecret = process.env.VITE_PADDLE_WEBHOOK_SECRET;
+  const supabaseUrl = process.env.VITE_SUPABASE_URL;
+  const supabaseServiceKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+  // Paddle API proxy for GET requests
+  if (req.method === 'GET') {
+    const url = new URL(req.url);
+    if (!paddleApiToken) {
+      return new Response('Missing Paddle API token', { status: 500, headers: corsHeaders });
+    }
+
+    // /products/{product_id}?include=prices
+    const productId = url.searchParams.get('product_id');
+    const include = url.searchParams.get('include');
+    if (productId) {
+      let apiUrl = `https://api.paddle.com/products/${productId}`;
+      if (include) {
+        apiUrl += `?include=${include}`;
+      }
+      const paddleRes = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${paddleApiToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await paddleRes.text();
+      return new Response(data, { status: paddleRes.status, headers: corsHeaders });
+    }
+
+    // /prices/{price_id}?include=product
+    const priceId = url.searchParams.get('price_id');
+    if (priceId) {
+      let apiUrl = `https://api.paddle.com/prices/${priceId}`;
+      if (include) {
+        apiUrl += `?include=${include}`;
+      }
+      const paddleRes = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${paddleApiToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await paddleRes.text();
+      return new Response(data, { status: paddleRes.status, headers: corsHeaders });
+    }
+
+    // /prices?product_id={product_id}
+    if (url.pathname.endsWith('/prices') && productId) {
+      const apiUrl = `https://api.paddle.com/prices?product_id=${productId}`;
+      const paddleRes = await fetch(apiUrl, {
+        headers: {
+          'Authorization': `Bearer ${paddleApiToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      const data = await paddleRes.text();
   try {
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  try {
+    // Use environment variables from .env.local (not committed to GitHub)
+    const paddleApiToken = process.env.VITE_PADDLE_API_TOKEN;
+    const paddleWebhookSecret = process.env.VITE_PADDLE_WEBHOOK_SECRET;
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabaseServiceKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+    // Replace previous Deno.env.get usage with these variables in your code
+    // Example for Paddle API proxy:
+    if (!paddleApiToken) {
+      return new Response('Missing Paddle API token', { status: 500, headers: corsHeaders });
+    }
+
+    // Example for webhook secret:
+    if (!paddleWebhookSecret) {
+      console.error('❌ Webhook secret not configured');
+      return new Response('Webhook secret not configured', { 
+        status: 500, 
+        headers: corsHeaders 
+      });
+    }
+
+    // Example for Supabase client:
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return new Response('Missing Supabase configuration', { status: 500, headers: corsHeaders });
+    }
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get webhook signature for verification
@@ -55,7 +137,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Verify webhook signature (implement proper verification)
-    const webhookSecret = Deno.env.get('PADDLE_WEBHOOK_SECRET');
+    const webhookSecret = process.env.PADDLE_WEBHOOK_SECRET;
     if (!webhookSecret) {
       console.error('❌ Webhook secret not configured');
       return new Response('Webhook secret not configured', { 

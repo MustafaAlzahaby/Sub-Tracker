@@ -2,18 +2,37 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Brand favicon -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- Optional theme color for address bar on mobile -->
     <meta name="theme-color" content="#3b82f6" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SubTracker - Subscription Management Made Simple</title>
     <meta name="description" content="Take control of your subscriptions. Track, manage, and optimize all your recurring payments in one beautiful dashboard." />
+    
+    <script 
+  src="https://cdn.paddle.com/paddle/v2/paddle.js" 
+  crossorigin="anonymous"
+  onload="console.log('✅ Paddle script loaded successfully')"
+  onerror="console.error('❌ Failed to load Paddle script'); loadFallbackScript()"
+></script>
+
+<script>
+  // Fallback function in case the main Paddle script fails
+  function loadFallbackScript() {
+    console.log('🔄 Trying fallback Paddle script...');
+    const script = document.createElement('script');
+    script.src = 'https://js.paddle.com/paddle/v2/paddle.js';  // Fallback URL
+    script.crossOrigin = 'anonymous';
+    script.onload = () => console.log('✅ Fallback Paddle script loaded');
+    script.onerror = () => console.error('❌ Fallback Paddle script failed');
+    document.head.appendChild(script);
+  }
+</script>
+
   </head>
   <body>
     <div id="root"></div>
+    
+    <!-- React app loads AFTER Paddle -->
     <script type="module" src="/src/main.tsx"></script>
-    <!-- Keep this ONLY if you're not dynamically injecting Paddle in code -->
-    <script src="https://cdn.paddle.com/paddle/paddle.js"></script>
   </body>
 </html>

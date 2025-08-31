@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { paddleService, PaddleCheckoutOptions } from '../lib/paddle';
+import { paddleService, PaddleCheckoutOptions, fetchPaddleProductWithPrices, fetchPaddlePriceWithProduct, listPaddlePrices } from '../lib/paddle';
 import { useAuth } from './useAuth';
 import { useUserPlan } from './useUserPlan';
 import toast from 'react-hot-toast';
@@ -14,33 +14,42 @@ export const usePaddle = () => {
   // Initialize Paddle on mount
   useEffect(() => {
     const initPaddle = async () => {
-      const initialized = await paddleService.initialize();
-      setIsInitialized(initialized);
+      try {
+        const initialized = await paddleService.initialize();
+        setIsInitialized(initialized);
+        if (!initialized) {
+          console.error('❌ Failed to initialize Paddle');
+        }
+      } catch (error) {
+        setIsInitialized(false);
+        console.error('❌ Error initializing Paddle:', error);
+      }
     };
-
     initPaddle();
   }, []);
 
-  const openCheckout = async (planType: 'pro') => {
+  const openCheckout = async (planType: 'pro', billingCycle: 'monthly' | 'yearly' = 'monthly') => {
     if (!user) {
       toast.error('Please sign in to upgrade your plan');
       return null;
     }
-
     if (!isInitialized) {
       toast.error('Payment system is not ready. Please try again.');
       return null;
     }
-
     setLoading(true);
     setError(null);
 
     try {
-      // Get the price ID from environment variables
-      const priceId = import.meta.env.VITE_PADDLE_PRO_PRICE_ID;
-      
+      // Fetch priceId from backend (using your new logic)
+      let priceId: string | undefined;
+      const proPrices = await listPaddlePrices(import.meta.env.VITE_PADDLE_PRO_PRODUCT_ID);
+      if (proPrices && Array.isArray(proPrices.data)) {
+        const found = proPrices.data.find((p: any) => p.billing_cycle === billingCycle);
+        priceId = found?.id;
+      }
       if (!priceId) {
-        throw new Error('Price ID not configured for Pro plan');
+        throw new Error(`Invalid price ID for ${billingCycle} plan`);
       }
 
       const checkoutOptions: PaddleCheckoutOptions = {
@@ -52,30 +61,34 @@ export const usePaddle = () => {
         ],
         customer: {
           email: user.email || '',
-          name: user.user_metadata?.full_name || 'SubTracker User'
+          name: user.user_metadata?.full_name || user.email || 'SubTracker User'
         },
         customData: {
           userId: user.id,
           planType: planType
         },
-        successUrl: `${window.location.origin}/account?payment=success&plan=${planType}`
+        successUrl: `${window.location.origin}/account?payment=success&plan=${planType}`,
+        settings: {
+          displayMode: 'overlay',
+          theme: 'light',
+          locale: 'en',
+          allowLogout: false,
+          showAddTaxId: false,
+          showAddDiscounts: true
+        }
       };
 
-      console.log('🚀 Opening Paddle checkout for Pro plan');
       const response = await paddleService.openCheckout(checkoutOptions);
 
       if (!response.success) {
         throw new Error(response.error || 'Checkout failed');
       }
 
-      // Paddle will handle the checkout flow
-      // Success/failure will be handled by the success URL callback
-      toast.info('Opening secure checkout...');
-
+      toast.success('Opening secure checkout...');
       return response;
+
     } catch (error: any) {
-      console.error('❌ Paddle checkout failed:', error);
-      setError(error.message || 'Checkout failed');
+      setError(error.message || 'Checkout failed. Please try again.');
       toast.error(error.message || 'Checkout failed. Please try again.');
       return null;
     } finally {
@@ -85,20 +98,19 @@ export const usePaddle = () => {
 
   const handlePaymentSuccess = async (planType: 'pro') => {
     try {
-      console.log('🎉 Payment successful, upgrading user plan...');
       await upgradePlan(planType);
       toast.success('🎉 Welcome to SubTracker Pro! Your plan has been upgraded.');
       return true;
     } catch (error: any) {
-      console.error('❌ Failed to upgrade plan after payment:', error);
       toast.error('Payment successful but failed to upgrade plan. Please contact support.');
       return false;
     }
   };
 
-  const getProducts = async () => {
+  // Adapted to use backend proxy functions
+  const getProducts = async (productId: string) => {
     try {
-      return await paddleService.getProducts();
+      return await fetchPaddleProductWithPrices(productId);
     } catch (error: any) {
       console.error('❌ Failed to fetch products:', error);
       return [];
@@ -107,9 +119,26 @@ export const usePaddle = () => {
 
   const getPrices = async (productId: string) => {
     try {
-      return await paddleService.getPrices(productId);
+      return await listPaddlePrices(productId);
     } catch (error: any) {
       console.error('❌ Failed to fetch prices:', error);
+      return [];
+    }
+  };
+
+  // Helper method to get available billing options for Pro plan
+  const getProPlanOptions = async () => {
+    try {
+      const prices = await listPaddlePrices(import.meta.env.VITE_PADDLE_PRO_PRODUCT_ID);
+      if (!prices || !Array.isArray(prices.data)) {
+        return [];
+      }
+      return prices.data.map((price: any) => ({
+        type: price.billing_cycle as 'monthly' | 'yearly',
+        priceId: price.id
+      }));
+    } catch (error) {
+      console.error('❌ Failed to get Pro plan options:', error);
       return [];
     }
   };
@@ -121,6 +150,7 @@ export const usePaddle = () => {
     openCheckout,
     handlePaymentSuccess,
     getProducts,
-    getPrices
+    getPrices,
+    getProPlanOptions
   };
 };

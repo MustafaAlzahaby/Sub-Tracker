@@ -62,7 +62,7 @@ export const Account: React.FC = () => {
       id: 'pro',
       name: 'Pro',
       price: '$7.99',
-      period: 'per month',
+      period: 'per month (or $63.99/year)',
       icon: Zap,
       color: 'from-blue-500 to-indigo-600',
       features: [
@@ -83,18 +83,18 @@ export const Account: React.FC = () => {
     }
   ];
 
-  const handleUpgradeToPro = async () => {
-    if (userPlan?.plan_type === 'pro') {
-      toast.info('You are already on the Pro plan');
-      return;
-    }
+  const handleUpgradeToPro = async (billingCycle: 'monthly' | 'yearly' = 'monthly') => {
+  if (userPlan?.plan_type === 'pro') {
+    toast.info('You are already on the Pro plan');
+    return;
+  }
 
-    try {
-      await openCheckout('pro');
-    } catch (error) {
-      console.error('Payment initiation failed:', error);
-    }
-  };
+  try {
+    await openCheckout('pro', billingCycle);
+  } catch (error) {
+    console.error('Payment initiation failed:', error);
+  }
+};
 
   const handleCancelSubscription = () => {
     toast.info('To cancel your subscription, please contact support at iamstark009@gmail.com');
@@ -327,35 +327,43 @@ export const Account: React.FC = () => {
                     ))}
                   </ul>
 
-                  <button
-                    onClick={plan.id === 'pro' ? handleUpgradeToPro : undefined}
-                    disabled={plan.id === userPlan?.plan_type}
-                    className={`w-full py-3 px-6 rounded-xl font-semibold transition-all ${
-                      plan.id === userPlan?.plan_type
-                        ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                        : plan.id === 'pro'
-                        ? `bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl ${paymentLoading ? 'opacity-50 cursor-not-allowed' : ''}`
-                        : plan.popular
-                        ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white hover:from-purple-600 hover:to-pink-700 shadow-lg hover:shadow-xl'
-                        : 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl'
-                    } disabled:opacity-50`}
-                  >
-                    {plan.id === userPlan?.plan_type ? (
-                      'Current Plan'
-                    ) : plan.id === 'pro' ? (
-                      paymentLoading ? (
-                        <div className="flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                          Processing...
-                        </div>
-                      ) : (
-                        'Upgrade to Pro'
-                      )
-                    ) : (
-                      'Get Started'
-                    )
-                    }
-                  </button>
+                  {plan.id === 'pro' && plan.id !== userPlan?.plan_type ? (
+  <div className="space-y-2">
+    <button
+      onClick={() => handleUpgradeToPro('monthly')}
+      disabled={paymentLoading}
+      className="w-full py-3 px-6 rounded-xl font-semibold transition-all bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl disabled:opacity-50"
+    >
+      {paymentLoading ? (
+        <div className="flex items-center justify-center">
+          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+          Processing...
+        </div>
+      ) : (
+        'Upgrade to Pro - Monthly ($7.99/mo)'
+      )}
+    </button>
+    <button
+      onClick={() => handleUpgradeToPro('yearly')}
+      disabled={paymentLoading}
+      className="w-full py-2 px-6 rounded-xl font-medium transition-all border-2 border-blue-500 text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 disabled:opacity-50"
+    >
+      {paymentLoading ? 'Processing...' : 'Yearly - Save 20%'}
+    </button>
+  </div>
+) : (
+  <button
+    onClick={plan.id === 'pro' ? () => handleUpgradeToPro() : undefined}
+    disabled={plan.id === userPlan?.plan_type}
+    className={`w-full py-3 px-6 rounded-xl font-semibold transition-all ${
+      plan.id === userPlan?.plan_type
+        ? 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
+        : 'bg-gradient-to-r from-blue-500 to-indigo-600 text-white hover:from-blue-600 hover:to-indigo-700 shadow-lg hover:shadow-xl'
+    }`}
+  >
+    {plan.id === userPlan?.plan_type ? 'Current Plan' : 'Get Started'}
+  </button>
+)}
                 </motion.div>
               ))}
             </div>

@@ -1,25 +1,22 @@
-import Paddle from '@paddle/paddle-js';
+// TypeScript declarations for Paddle v2
+declare global {
+  interface Window {
+    Paddle: any;
+    paddleReady: boolean;
+    paddleReadyPromise: Promise<boolean>;
+  }
+}
 
 interface PaddleConfig {
   environment: 'sandbox' | 'production';
-  token: string;
   clientSideToken: string;
 }
 
-interface PaddleProduct {
-  id: string;
-  name: string;
-  description: string;
-  price: {
-    amount: string;
-    currency: string;
-  };
-}
-
 interface PaddleCheckoutOptions {
-  product: string; // Specify the product (e.g., "productA")
-  planType: 'monthly' | 'yearly'; // Specify the plan type (monthly or yearly)
-  quantity: number;
+  items: Array<{
+    priceId: string;
+    quantity: number;
+  }>[];
   customer?: {
     email?: string;
     name?: string;
@@ -29,7 +26,14 @@ interface PaddleCheckoutOptions {
     planType: string;
   };
   successUrl?: string;
-  discountCode?: string;
+  settings?: {
+    displayMode?: 'overlay' | 'inline';
+    theme?: 'light' | 'dark';
+    locale?: string;
+    allowLogout?: boolean;
+    showAddTaxId?: boolean;
+    showAddDiscounts?: boolean;
+  };
 }
 
 interface PaddleCheckoutResponse {
@@ -42,115 +46,143 @@ class PaddleService {
   private config: PaddleConfig;
   private paddle: any = null;
   private isInitialized = false;
+  private initPromise: Promise<boolean> | null = null;
 
   constructor() {
     this.config = {
-      environment: (import.meta.env.VITE_PADDLE_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
-      token: import.meta.env.VITE_PADDLE_API_TOKEN || '',
+      environment: (import.meta.env.VITE_PADDLE_ENV as 'sandbox' | 'production') || 'sandbox',
       clientSideToken: import.meta.env.VITE_PADDLE_CLIENT_TOKEN || ''
     };
 
-    if (!this.config.token || !this.config.clientSideToken) {
-      console.warn('⚠️ Paddle credentials not found. Please add VITE_PADDLE_API_TOKEN and VITE_PADDLE_CLIENT_TOKEN to your .env file');
+    console.log('🔍 Paddle Config:', {
+      environment: this.config.environment,
+      hasToken: !!this.config.clientSideToken,
+      tokenPrefix: this.config.clientSideToken ? this.config.clientSideToken.substring(0, 15) + '...' : 'none'
+    });
+
+    if (!this.config.clientSideToken) {
+      console.error('❌ Paddle client token not found. Please add VITE_PADDLE_CLIENT_TOKEN to your .env file');
     }
   }
 
+ private async waitForPaddleScript(): Promise<boolean> {
+  return new Promise((resolve) => {
+    console.log('🔍 Waiting for Paddle script...');
+
+    if (typeof window !== 'undefined' && window.Paddle) {
+      console.log('✅ Paddle already available');
+      resolve(true);
+      return;
+    }
+
+    let attempts = 0;
+    const maxAttempts = 200; // Increase max attempts (previously 100)
+    const checkPaddle = () => {
+      attempts++;
+      console.log(`🔍 Checking for Paddle SDK... attempt ${attempts}/${maxAttempts}`);
+
+      if (typeof window !== 'undefined' && window.Paddle) {
+        console.log('✅ Paddle SDK loaded successfully!');
+        resolve(true);
+        return;
+      }
+
+      if (attempts >= maxAttempts) {
+        console.error('❌ Paddle SDK failed to load!');
+        resolve(false);
+        return;
+      }
+
+      setTimeout(checkPaddle, 100);  // Retry every 100ms
+    };
+
+    checkPaddle();
+  });
+}
+
+
+
   async initialize(): Promise<boolean> {
+    // Return existing promise if initialization is in progress
+    if (this.initPromise) {
+      return this.initPromise;
+    }
+
+    // Return true if already initialized
     if (this.isInitialized && this.paddle) {
+      console.log('✅ Paddle already initialized');
       return true;
     }
 
+    this.initPromise = this.doInitialize();
+    return this.initPromise;
+  }
+
+  private async doInitialize(): Promise<boolean> {
     try {
-      console.log('🚀 Initializing Paddle SDK...');
-      // Manually add the script tag for Paddle SDK
-      const script = document.createElement('script');
-      script.src = 'https://cdn.paddle.com/paddle/paddle.js';  // The correct CDN link
-      script.async = true;
-      script.onload = () => {
-        // Initialize the SDK after the script is loaded
-        window.Paddle.Setup({
-          vendor: this.config.clientSideToken,  // Use the client-side token (your Paddle account's token)
-        });
+      console.log('🚀 Starting Paddle v2 SDK initialization...');
+      
+      // First, wait for the Paddle script to load
+      const scriptLoaded = await this.waitForPaddleScript();
+      if (!scriptLoaded) {
+        console.error('❌ Paddle script failed to load');
+        return false;
+      }
 
-        this.paddle = window.Paddle;
-        this.isInitialized = true;
-        console.log('✅ Paddle SDK initialized successfully');
-      };
+      if (!this.config.clientSideToken) {
+        console.error('❌ Missing Paddle client token');
+        return false;
+      }
 
-      script.onerror = () => {
-        console.error('❌ Failed to load Paddle SDK');
-      };
+      console.log('🔧 Setting up Paddle with token:', this.config.clientSideToken.substring(0, 15) + '...');
 
-      document.body.appendChild(script);
+      // Initialize Paddle v2
+      const setupResult = await window.Paddle.Setup({
+        token: this.config.clientSideToken,
+        environment: this.config.environment,
+      });
+
+      console.log('✅ Paddle Setup result:', setupResult);
+      this.paddle = window.Paddle;
+      this.isInitialized = true;
+      console.log('✅ Paddle v2 SDK initialized successfully');
+      
       return true;
+
     } catch (error) {
-      console.error('❌ Failed to initialize Paddle SDK:', error);
+      console.error('❌ Failed to initialize Paddle v2 SDK:', error);
+      this.initPromise = null; // Reset promise so we can try again
       return false;
     }
   }
 
-  // Fetch Price ID based on the selected product and plan type (monthly/yearly)
-  getPriceIdForProductAndPlan(product: string, planType: 'monthly' | 'yearly'): string {
-    const prices = JSON.parse(import.meta.env.VITE_PADDLE_PRICES_JSON);
-    const productPrices = prices[product];
-
-    if (!productPrices) {
-      throw new Error(`Product ${product} not found`);
-    }
-
-    const priceId = productPrices[planType];
-
-    if (!priceId) {
-      throw new Error(`Price ID for ${planType} plan not found for product ${product}`);
-    }
-
-    return priceId;
-  }
-
   async openCheckout(options: PaddleCheckoutOptions): Promise<PaddleCheckoutResponse> {
     try {
-      if (!this.isInitialized) {
-        const initialized = await this.initialize();
-        if (!initialized) {
-          throw new Error('Failed to initialize Paddle SDK');
-        }
+      console.log('🛒 Attempting to open checkout...');
+      
+      // Ensure Paddle is initialized
+      const initialized = await this.initialize();
+      if (!initialized) {
+        throw new Error('Failed to initialize Paddle SDK');
       }
 
-      // Get the Price ID based on the selected product and plan
-      const priceId = this.getPriceIdForProductAndPlan(options.product, options.planType);
+      if (!this.paddle || !this.paddle.Checkout || typeof this.paddle.Checkout.open !== 'function') {
+        console.error('❌ Paddle Checkout not available');
+        throw new Error('Paddle Checkout not available');
+      }
 
-      console.log('🛒 Opening Paddle checkout with price ID:', priceId);
-
-      // Open Paddle checkout
-      const checkout = await this.paddle.Checkout.open({
-        items: [
-          {
-            priceId: priceId,  // Use the correct Price ID
-            quantity: options.quantity
-          }
-        ],
-        customer: options.customer,
-        customData: options.customData,
-        successUrl: options.successUrl || `${window.location.origin}/account?payment=success`,
-        settings: {
-          displayMode: 'overlay',
-          theme: 'light',
-          locale: 'en',
-          allowLogout: false,
-          showAddTaxId: false,
-          showAddDiscounts: true
-        }
-      });
-
+      const checkout = await this.paddle.Checkout.open(options);
+      
       if (checkout) {
-        console.log('✅ Paddle checkout opened successfully');
+        console.log('✅ Checkout opened successfully:', checkout);
         return {
           success: true,
-          checkoutId: checkout.id
+          checkoutId: checkout.id || 'checkout_opened'
         };
       } else {
         throw new Error('Checkout failed to open');
       }
+
     } catch (error: any) {
       console.error('❌ Paddle checkout failed:', error);
       return {
@@ -160,8 +192,41 @@ class PaddleService {
     }
   }
 
-  // Rest of your methods (getProducts, getPrices, etc.) remain the same.
+  // End of PaddleService class
+}
+
+// Fetch Paddle product and prices securely via your backend function.
+export async function fetchPaddleProductWithPrices(productId: string) {
+  const res = await fetch(
+    `${import.meta.env.VITE_APP_URL}/functions/v1/paddle-webhook?product_id=${productId}&include=prices`
+  );
+  if (!res.ok) {
+    throw new Error('Failed to fetch Paddle product/prices');
+  }
+  return await res.json();
+}
+
+// Fetch Paddle price and related product securely via your backend function.
+export async function fetchPaddlePriceWithProduct(priceId: string) {
+  const res = await fetch(
+    `${import.meta.env.VITE_APP_URL}/functions/v1/paddle-webhook?price_id=${priceId}&include=product`
+  );
+  if (!res.ok) {
+    throw new Error('Failed to fetch Paddle price/product');
+  }
+  return await res.json();
+}
+
+// List prices for a Paddle product securely via your backend function.
+export async function listPaddlePrices(productId: string) {
+  const res = await fetch(
+    `${import.meta.env.VITE_APP_URL}/functions/v1/paddle-webhook/prices?product_id=${productId}`
+  );
+  if (!res.ok) {
+    throw new Error('Failed to list Paddle prices');
+  }
+  return await res.json();
 }
 
 export const paddleService = new PaddleService();
-export type { PaddleCheckoutOptions, PaddleCheckoutResponse, PaddleProduct };
+export type { PaddleCheckoutOptions, PaddleCheckoutResponse };
