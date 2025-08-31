@@ -192,6 +192,7 @@ class PaddleService {
     }
   }
 
+<<<<<<< HEAD
   // End of PaddleService class
 }
 
@@ -226,6 +227,9 @@ export async function listPaddlePrices(productId: string) {
     throw new Error('Failed to list Paddle prices');
   }
   return await res.json();
+=======
+  // Other methods...
+>>>>>>> 7074a79d302a33b5a1db8773ddaa93f91f5d4d8a
 }
 
 export const paddleService = new PaddleService();

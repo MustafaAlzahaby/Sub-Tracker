@@ -353,7 +353,11 @@ export const Account: React.FC = () => {
   </div>
 ) : (
   <button
+<<<<<<< HEAD
     onClick={plan.id === 'pro' ? () => handleUpgradeToPro() : undefined}
+=======
+    onClick={plan.id === 'pro' ? handleUpgradeToPro : undefined}
+>>>>>>> 7074a79d302a33b5a1db8773ddaa93f91f5d4d8a
     disabled={plan.id === userPlan?.plan_type}
     className={`w-full py-3 px-6 rounded-xl font-semibold transition-all ${
       plan.id === userPlan?.plan_type
