@@ -7,6 +7,7 @@ import { usePaddle } from '../hooks/usePaddle';
 import { User, CreditCard, Settings, Crown, Zap, Star, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
+import { PaddleDebugComponent } from '../components/PaddleDebugComponent';
 
 export const Account: React.FC = () => {
   const { user } = useAuth();
@@ -115,7 +116,28 @@ export const Account: React.FC = () => {
     </Layout>
   );
 }
-
+// Add this to your Account.tsx for debugging
+const DebugPaddleConfig = () => {
+  const { debugPaddleConfig, testPaddleConnection } = usePaddle();
+  
+  return (
+    <div className="bg-yellow-100 border border-yellow-400 p-4 rounded-lg">
+      <h3 className="font-bold">Debug Paddle Configuration</h3>
+      <button 
+        onClick={debugPaddleConfig}
+        className="bg-blue-500 text-white px-4 py-2 rounded mr-2"
+      >
+        Log Config
+      </button>
+      <button 
+        onClick={testPaddleConnection}
+        className="bg-green-500 text-white px-4 py-2 rounded"
+      >
+        Test Connection
+      </button>
+    </div>
+  );
+};
 
   const currentPlan = plans.find(plan => plan.id === userPlan?.plan_type) || plans[0];
 
@@ -184,6 +206,7 @@ export const Account: React.FC = () => {
             </div>
           </motion.div>
 
+{process.env.NODE_ENV === 'development' && <PaddleDebugComponent />}
           {/* Current Plan */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -363,6 +386,7 @@ export const Account: React.FC = () => {
   >
     {plan.id === userPlan?.plan_type ? 'Current Plan' : 'Get Started'}
   </button>
+  
 )}
                 </motion.div>
               ))}
