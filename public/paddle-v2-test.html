@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Paddle v2 Test</title>
+    <script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+    <script>
+      async function init() {
+        try {
+          Paddle.Environment.set('sandbox');
+          await Paddle.Initialize({
+            token: 'REPLACE_WITH_YOUR_SANDBOX_CLIENT_TOKEN',
+            eventCallback: (e) => console.log('event', e),
+          });
+          console.log('init done', typeof Paddle.Initialize, typeof Paddle.Setup);
+        } catch (e) { console.error(e); }
+      }
+      async function openCheckout() {
+        try {
+          const res = await Paddle.Checkout.open({
+            items: [{ priceId: 'REPLACE_WITH_YOUR_PRICE_ID', quantity: 1 }],
+            customer: { email: 'test@example.com' },
+            settings: { displayMode: 'overlay', variant: 'one-page' },
+          });
+          console.log('res', res);
+        } catch (e) { console.error(e); }
+      }
+      window.addEventListener('DOMContentLoaded', init);
+    </script>
+  </head>
+  <body>
+    <button onclick="openCheckout()">Open Checkout</button>
+  </body>
+</html>

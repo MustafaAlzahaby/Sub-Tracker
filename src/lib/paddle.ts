@@ -9,8 +9,8 @@ declare global {
 
 interface PaddleConfig {
   environment: 'sandbox' | 'production';
-  clientSideToken: string;
-  sellerId: string;
+  token: string; // Changed from clientSideToken to token
+  vendorId: string;
 }
 
 export interface PaddleCheckoutOptions {
@@ -52,181 +52,157 @@ class PaddleService {
   constructor() {
     this.config = {
       environment: (import.meta.env.VITE_PADDLE_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
-      clientSideToken: import.meta.env.VITE_PADDLE_CLIENT_TOKEN || '',
-      sellerId: import.meta.env.VITE_PADDLE_VENDOR_ID || ''
+      token: import.meta.env.VITE_PADDLE_CLIENT_TOKEN || '',
+      vendorId: import.meta.env.VITE_PADDLE_VENDOR_ID || ''
     };
-
-    console.log('🔍 Paddle Config:', {
-      environment: this.config.environment,
-      hasToken: !!this.config.clientSideToken,
-      tokenPrefix: this.config.clientSideToken ? this.config.clientSideToken.substring(0, 15) + '...' : 'none',
-      sellerId: this.config.sellerId
-    });
-
-    if (!this.config.clientSideToken) {
-      console.error('❌ Paddle client token not found. Please add VITE_PADDLE_CLIENT_TOKEN to your .env file');
-    }
   }
 
   private async waitForPaddleScript(): Promise<boolean> {
     return new Promise((resolve) => {
-      console.log('🔍 Waiting for Paddle script...');
-
-      if (typeof window !== 'undefined' && window.Paddle) {
-        console.log('✅ Paddle already available');
-        resolve(true);
-        return;
-      }
-
-      let attempts = 0;
-      const maxAttempts = 200;
-      const checkPaddle = () => {
-        attempts++;
-        console.log(`🔍 Checking for Paddle SDK... attempt ${attempts}/${maxAttempts}`);
-
-        if (typeof window !== 'undefined' && window.Paddle) {
-          console.log('✅ Paddle SDK loaded successfully!');
-          resolve(true);
-          return;
-        }
-
-        if (attempts >= maxAttempts) {
-          console.error('❌ Paddle SDK failed to load!');
-          resolve(false);
-          return;
-        }
-
-        setTimeout(checkPaddle, 100);
+      if (typeof window !== 'undefined' && window.Paddle) return resolve(true);
+      let tries = 0;
+      const tick = () => {
+        tries++;
+        if (typeof window !== 'undefined' && window.Paddle) return resolve(true);
+        if (tries >= 200) return resolve(false);
+        setTimeout(tick, 100);
       };
-
-      checkPaddle();
+      tick();
     });
   }
 
+ private async doInitialize(): Promise<boolean> {
+  try {
+    console.log('🚀 Starting Paddle v2 SDK initialization...');
+
+    const scriptLoaded = await this.waitForPaddleScript();
+    if (!scriptLoaded) return false;
+
+    if (!this.config.token) {
+      console.error('❌ Missing Paddle client token');
+      return false;
+    }
+
+    const gp: any = (typeof window !== 'undefined') ? (window as any).Paddle : undefined;
+    if (!gp) {
+      console.error('❌ window.Paddle is not available after script load');
+      return false;
+    }
+
+    const env = (this.config.environment || 'sandbox') === 'production' ? 'production' : 'sandbox';
+    try {
+      gp.Environment?.set?.(env);
+      console.log(`✅ Paddle environment set: ${env}`);
+    } catch (e) {
+      console.warn('⚠️ Paddle.Environment.set failed (SDK may auto-detect). Continuing…', e);
+    }
+
+    console.log('🔧 Calling Paddle.Initialize({ token }) ...');
+    await gp.Initialize({
+      token: this.config.token,
+      eventCallback: (evt: any) => console.log('[Paddle event]', evt),
+    });
+
+    this.paddle = (window as any).Paddle;
+    this.isInitialized = true;
+
+    const version = this.paddle?.version ?? '(unknown)';
+    console.log('✅ Paddle v2 initialized. version:', version, 'Methods:', Object.keys(this.paddle || {}));
+    return true;
+  } catch (error: any) {
+    console.error('❌ Failed to initialize Paddle v2 SDK:', error);
+    this.initPromise = null;
+    return false;
+  }
+}
+
+
+
+
   async initialize(): Promise<boolean> {
-    if (this.initPromise) {
-      return this.initPromise;
-    }
-
-    if (this.isInitialized && this.paddle) {
-      console.log('✅ Paddle already initialized');
-      return true;
-    }
-
+    if (this.initPromise) return this.initPromise;
+    if (this.isInitialized && this.paddle) return true;
     this.initPromise = this.doInitialize();
     return this.initPromise;
   }
 
-  private async doInitialize(): Promise<boolean> {
-    try {
-      console.log('🚀 Starting Paddle v2 SDK initialization...');
-      
-      const scriptLoaded = await this.waitForPaddleScript();
-      if (!scriptLoaded) {
-        console.error('❌ Paddle script failed to load');
-        return false;
-      }
-
-      if (!this.config.clientSideToken) {
-        console.error('❌ Missing Paddle client token');
-        return false;
-      }
-
-      console.log('🔧 Setting up Paddle with environment:', this.config.environment);
-
-      const setupResult = await window.Paddle.Setup({
-        token: this.config.clientSideToken,
-        environment: this.config.environment,
-      });
-
-      console.log('✅ Paddle Setup result:', setupResult);
-      this.paddle = window.Paddle;
-      this.isInitialized = true;
-      console.log('✅ Paddle v2 SDK initialized successfully');
-      
-      return true;
-
-    } catch (error) {
-      console.error('❌ Failed to initialize Paddle v2 SDK:', error);
-      this.initPromise = null;
-      return false;
-    }
-  }
-
   async openCheckout(options: PaddleCheckoutOptions): Promise<PaddleCheckoutResponse> {
-    try {
-      console.log('🛒 Attempting to open checkout with options:', options);
-      
-      const initialized = await this.initialize();
-      if (!initialized) {
-        throw new Error('Failed to initialize Paddle SDK');
-      }
+  try {
+    console.log('🛒 Attempting to open checkout with options:', options);
 
-      if (!this.paddle || !this.paddle.Checkout || typeof this.paddle.Checkout.open !== 'function') {
-        console.error('❌ Paddle Checkout not available');
-        throw new Error('Paddle Checkout not available');
-      }
-
-      const checkout = await this.paddle.Checkout.open(options);
-      
-      if (checkout) {
-        console.log('✅ Checkout opened successfully:', checkout);
-        return {
-          success: true,
-          checkoutId: checkout.id || 'checkout_opened'
-        };
-      } else {
-        throw new Error('Checkout failed to open');
-      }
-
-    } catch (error: any) {
-      console.error('❌ Paddle checkout failed:', error);
-      return {
-        success: false,
-        error: error.message || 'Checkout failed'
-      };
+    const initialized = await this.initialize();
+    if (!initialized) {
+      throw new Error('Failed to initialize Paddle SDK');
     }
-  }
 
-  // Add window checkout as fallback method
+    // 👇 Rebind from global in case internal ref was lost
+    if (!this.paddle) {
+      this.paddle = (typeof window !== 'undefined') ? (window as any).Paddle : null;
+    }
+
+    if (!this.paddle) {
+      throw new Error('Paddle SDK not available on window');
+    }
+
+    if (!this.paddle.Checkout || typeof this.paddle.Checkout.open !== 'function') {
+      console.error('❌ Paddle Checkout not available');
+      console.error('Available Paddle methods:', Object.keys(this.paddle || {}));
+      throw new Error('Paddle Checkout not available');
+    }
+
+    const checkout = await this.paddle.Checkout.open(options);
+
+    if (checkout) {
+      console.log('✅ Checkout opened successfully:', checkout);
+      return { success: true, checkoutId: checkout.id || 'checkout_opened' };
+    } else {
+      throw new Error('Failed to open checkout');
+    }
+  } catch (error: any) {
+    console.error('❌ Paddle checkout failed:', error);
+    return { success: false, error: error.message || 'Checkout failed' };
+  }
+}
+
+
   async openCheckoutWindow(options: PaddleCheckoutOptions): Promise<PaddleCheckoutResponse> {
-    try {
-      console.log('🪟 Attempting to open checkout in new window...');
-      
-      const initialized = await this.initialize();
-      if (!initialized) {
-        throw new Error('Failed to initialize Paddle SDK');
-      }
+  try {
+    console.log('🪟 Attempting to open checkout in new window...');
 
-      // Modify options for window mode
-      const windowOptions = {
-        ...options,
-        settings: {
-          ...options.settings,
-          displayMode: 'inline' as const
-        }
-      };
-
-      const checkout = await this.paddle.Checkout.open(windowOptions);
-      
-      if (checkout) {
-        console.log('✅ Window checkout opened successfully:', checkout);
-        return {
-          success: true,
-          checkoutId: checkout.id || 'window_checkout_opened'
-        };
-      } else {
-        throw new Error('Window checkout failed to open');
-      }
-
-    } catch (error: any) {
-      console.error('❌ Window checkout failed:', error);
-      return {
-        success: false,
-        error: error.message || 'Window checkout failed'
-      };
+    const initialized = await this.initialize();
+    if (!initialized) {
+      throw new Error('Failed to initialize Paddle SDK');
     }
+
+    if (!this.paddle) {
+      this.paddle = (typeof window !== 'undefined') ? (window as any).Paddle : null;
+    }
+    if (!this.paddle || !this.paddle.Checkout || typeof this.paddle.Checkout.open !== 'function') {
+      throw new Error('Paddle Checkout not available');
+    }
+
+    const windowOptions = {
+      ...options,
+      settings: {
+        ...options.settings,
+        displayMode: 'inline' as const, // new-window fallback
+      },
+    };
+
+    const checkout = await this.paddle.Checkout.open(windowOptions);
+
+    if (checkout) {
+      console.log('✅ Window checkout opened successfully:', checkout);
+      return { success: true, checkoutId: checkout.id || 'window_checkout_opened' };
+    } else {
+      throw new Error('Window checkout failed to open');
+    }
+  } catch (error: any) {
+    console.error('❌ Window checkout failed:', error);
+    return { success: false, error: error.message || 'Window checkout failed' };
   }
+}
+
 
   // Get price ID based on plan and billing cycle
   getPriceId(planType: 'pro', billingCycle: 'monthly' | 'yearly'): string {
@@ -252,85 +228,52 @@ class PaddleService {
 // Fetch Paddle product and prices securely via your backend function
 export async function fetchPaddleProductWithPrices(productId: string) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase configuration');
-  }
+  if (!supabaseUrl) throw new Error('Missing Supabase configuration');
 
   const apiUrl = `${supabaseUrl}/functions/v1/paddle-webhook`;
-  const headers = {
-    'Authorization': `Bearer ${supabaseAnonKey}`,
-    'Content-Type': 'application/json',
-  };
+  const url = `${apiUrl}?endpoint=products&product_id=${encodeURIComponent(productId)}&include=prices`;
 
-  const response = await fetch(`${apiUrl}?product_id=${productId}&include=prices`, {
-    method: 'GET',
-    headers
-  });
-
+  const response = await fetch(url); // no headers
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to fetch Paddle product/prices: ${response.status} - ${errorText}`);
   }
-  
   return await response.json();
 }
+
 
 // Fetch Paddle price and related product securely via your backend function
 export async function fetchPaddlePriceWithProduct(priceId: string) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase configuration');
-  }
+  if (!supabaseUrl) throw new Error('Missing Supabase configuration');
 
   const apiUrl = `${supabaseUrl}/functions/v1/paddle-webhook`;
-  const headers = {
-    'Authorization': `Bearer ${supabaseAnonKey}`,
-    'Content-Type': 'application/json',
-  };
+  const url = `${apiUrl}?endpoint=prices&price_id=${encodeURIComponent(priceId)}&include=product`;
 
-  const response = await fetch(`${apiUrl}?price_id=${priceId}&include=product`, {
-    method: 'GET',
-    headers
-  });
-
+  const response = await fetch(url); // no headers
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to fetch Paddle price/product: ${response.status} - ${errorText}`);
   }
-  
   return await response.json();
 }
+
 
 // List prices for a Paddle product securely via your backend function
 export async function listPaddlePrices(productId: string) {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase configuration');
-  }
+  if (!supabaseUrl) throw new Error('Missing Supabase configuration');
 
   const apiUrl = `${supabaseUrl}/functions/v1/paddle-webhook`;
-  const headers = {
-    'Authorization': `Bearer ${supabaseAnonKey}`,
-    'Content-Type': 'application/json',
-  };
+  const url = `${apiUrl}?endpoint=prices&product_id=${encodeURIComponent(productId)}`;
 
-  const response = await fetch(`${apiUrl}/prices?product_id=${productId}`, {
-    method: 'GET',
-    headers
-  });
-
+  const response = await fetch(url); // no headers
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Failed to list Paddle prices: ${response.status} - ${errorText}`);
   }
-  
   return await response.json();
 }
+
 
 export const paddleService = new PaddleService();
