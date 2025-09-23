@@ -63,39 +63,35 @@ Deno.serve(async (req: Request) => {
     const paddleEnv = (Deno.env.get('PADDLE_ENVIRONMENT') || 'sandbox').toLowerCase();
     const PADDLE_BASE =
       paddleEnv === 'production' ? 'https://api.paddle.com' : 'https://sandbox-api.paddle.com';
-// --- Sanity checks and helpful logs ---
-const tokenPrefix = (paddleApiToken || '').slice(0, 12);
-console.log('[paddle-webhook] env:', {
+// after: const paddleApiToken = Deno.env.get('PADDLE_API_TOKEN');
+const rawToken = Deno.env.get('PADDLE_API_TOKEN') ?? '';
+// trim & strip accidental surrounding quotes
+const paddleApiToken = rawToken.trim().replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+
+const paddleEnv = (Deno.env.get('PADDLE_ENVIRONMENT') || 'sandbox').toLowerCase();
+
+console.log('[paddle-webhook] env check', {
   paddleEnv,
   hasToken: !!paddleApiToken,
-  tokenPrefix,                 // safe: only first chars
+  tokenPrefix: paddleApiToken.slice(0, 12),
   looksLikeServerKey:
-    !!paddleApiToken && (paddleApiToken.startsWith('pdl_live_') || paddleApiToken.startsWith('pdl_sandbox_'))
+    paddleApiToken.startsWith('pdl_live_') || paddleApiToken.startsWith('pdl_sandbox_'),
 });
 
 if (!paddleApiToken) {
   return new Response(JSON.stringify({ error: 'Missing Paddle API token' }), {
-    status: 500,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 }
-
 if (paddleEnv === 'production' && !paddleApiToken.startsWith('pdl_live_')) {
-  return new Response(
-    JSON.stringify({
-      error: 'Server misconfigured: expected a LIVE server API key (pdl_live_...) for production.',
-    }),
-    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+  return new Response(JSON.stringify({
+    error: 'Expected LIVE server API key (pdl_live_...) for production',
+  }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
-
 if (paddleEnv !== 'production' && !paddleApiToken.startsWith('pdl_sandbox_')) {
-  return new Response(
-    JSON.stringify({
-      error: 'Server misconfigured: expected a SANDBOX server API key (pdl_sandbox_...) for non-production.',
-    }),
-    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+  return new Response(JSON.stringify({
+    error: 'Expected SANDBOX server API key (pdl_sandbox_...) for non-production',
+  }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
     /* =======================
@@ -166,12 +162,14 @@ if (paddleEnv !== 'production' && !paddleApiToken.startsWith('pdl_sandbox_')) {
 
       try {
         const paddleResponse = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${paddleApiToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${paddleApiToken}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      });
+
 
         const text = await paddleResponse.text();
         return new Response(text, {
